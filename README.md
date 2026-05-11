@@ -1,6 +1,9 @@
-# Synapse City OS (Phase 1 MVP)
+# Synapse City OS (Phase 1 + Phase 2)
 
-This repository contains a foundational Phase 1 MVP for a distributed smart-city traffic and road-health platform.
+This repository contains:
+
+- **Phase 1 MVP** for adaptive traffic, sensor heartbeat failover, and road-integrity anomaly ingestion.
+- **Phase 2 Fleet & Public Transit Integration** with a Java Spring Boot fleet-service.
 
 ## Architecture (Phase 1)
 
@@ -25,9 +28,19 @@ This repository contains a foundational Phase 1 MVP for a distributed smart-city
 - **Infrastructure**
   - `docker-compose.yml` starts:
     - backend (FastAPI)
+    - fleet-service (Spring Boot)
     - Eclipse Mosquitto (MQTT broker)
     - Redis (cache/state option)
     - PostgreSQL (future persistence)
+
+## Architecture (Phase 2)
+
+- **Fleet Tracking Service** (`fleet-service`)
+  - `POST /api/v1/fleet/telemetry` ingests bus telemetry (`bus_id`, `gps_coordinates` lat/lon, `speed`, `passenger_count`, `route_id`).
+  - Includes schedule monitoring to determine whether a bus is behind schedule based on route/location distance checks.
+  - Emits a simulated traffic-light **priority request** event when a late bus is approaching a configured intersection.
+- **Commuter API**
+  - `GET /api/v1/commuter/buses/{route_id}` returns real-time buses for a route with location and `occupancy_status` (`EMPTY`, `MODERATE`, `FULL`).
 
 ## Quick Start
 
@@ -61,6 +74,13 @@ python edge_processor/camera_feed.py --source "rtsp://user:pass@camera-ip:554/st
 
 ```bash
 docker compose up --build
+
+### 5) Run Fleet Service locally (without Docker)
+
+```bash
+cd fleet-service
+mvn spring-boot:run
+```
 ```
 
 ## Core API Endpoints
@@ -71,9 +91,16 @@ docker compose up --build
 - `GET /heartbeat/{sensor_id}` – sensor status and fallback flag
 - `POST /ingest/road-integrity` – ingest bus vibration + GPS sample
 - `GET /ingest/road-integrity/anomalies` – list detected anomalies
+- `POST /api/v1/fleet/telemetry` – ingest fleet telemetry and trigger priority requests for late buses near intersections
+- `GET /api/v1/commuter/buses/{route_id}` – commuter route view with bus locations + occupancy status
 
 ## Tests
 
 ```bash
 PYTHONPATH=backend pytest backend/tests -q
+
+```bash
+cd fleet-service
+mvn test
+```
 ```

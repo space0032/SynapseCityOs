@@ -11,6 +11,14 @@ services:
       - redis
       - postgres
 
+  fleet-service:
+    build:
+      context: ./fleet-service
+      dockerfile: Dockerfile
+    container_name: synapsecity-fleet-service
+    ports:
+      - "8080:8080"
+
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: synapsecity-mosquitto
