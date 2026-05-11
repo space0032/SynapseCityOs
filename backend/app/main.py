@@ -4,6 +4,7 @@ import os
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from itertools import islice
 from math import atan2, cos, radians, sin, sqrt
 from typing import Deque, Dict, List, Optional
 
@@ -411,5 +412,5 @@ def ingest_v2p_alert(payload: V2PAlertIngest) -> dict:
 
 @app.get("/api/v1/v2p/alerts")
 def list_v2p_alerts(limit: int = Query(default=20, ge=1, le=100)) -> dict:
-    items = list(V2P_ALERTS)[-limit:]
+    items = list(reversed(list(islice(reversed(V2P_ALERTS), limit))))
     return {"count": len(items), "items": items}
