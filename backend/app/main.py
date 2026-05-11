@@ -4,7 +4,6 @@ import os
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from itertools import islice
 from math import atan2, cos, radians, sin, sqrt
 from typing import Deque, Dict, List, Optional
 
@@ -287,9 +286,9 @@ def road_anomalies() -> dict:
 @app.post("/api/v1/emergency/priority-ping")
 def emergency_priority_ping(
     payload: EmergencyPingIngest,
-    x_emergency_token_header: Optional[str] = Header(default=None, alias="x-emergency-token"),
+    emergency_token: Optional[str] = Header(default=None, alias="x-emergency-token"),
 ) -> dict:
-    if x_emergency_token_header != EMERGENCY_API_TOKEN:
+    if emergency_token != EMERGENCY_API_TOKEN:
         raise HTTPException(status_code=401, detail="invalid emergency token")
 
     now = payload.recorded_at or utcnow()
@@ -412,5 +411,10 @@ def ingest_v2p_alert(payload: V2PAlertIngest) -> dict:
 
 @app.get("/api/v1/v2p/alerts")
 def list_v2p_alerts(limit: int = Query(default=20, ge=1, le=100)) -> dict:
-    items = list(reversed(list(islice(reversed(V2P_ALERTS), limit))))
+    items: List[dict] = []
+    for alert in reversed(V2P_ALERTS):
+        items.append(alert)
+        if len(items) == limit:
+            break
+    items.reverse()
     return {"count": len(items), "items": items}
