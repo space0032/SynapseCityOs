@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import os
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from math import atan2, cos, radians, sin, sqrt
-from typing import Dict, List, Optional
+from typing import Deque, Dict, List, Optional
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 
@@ -108,7 +109,7 @@ ROAD_ANOMALIES: List[dict] = []
 EMERGENCY_OVERRIDES: Dict[str, dict] = {}
 POLLUTION_ZONES: Dict[str, dict] = {}
 PARKING_SLOTS: Dict[str, dict] = {}
-V2P_ALERTS: List[dict] = []
+V2P_ALERTS: Deque[dict] = deque(maxlen=500)
 
 
 def utcnow() -> datetime:
@@ -367,7 +368,11 @@ def ingest_parking(payload: ParkingSlotIngest) -> dict:
 
 
 @app.get("/api/v1/commuter/parking")
-def nearest_available_parking(latitude: float, longitude: float, limit: int = 5) -> dict:
+def nearest_available_parking(
+    latitude: float,
+    longitude: float,
+    limit: int = Query(default=5, ge=1, le=100),
+) -> dict:
     available = []
     for slot in PARKING_SLOTS.values():
         if slot["occupied"]:
@@ -375,7 +380,7 @@ def nearest_available_parking(latitude: float, longitude: float, limit: int = 5)
         distance_m = haversine_meters(latitude, longitude, slot["latitude"], slot["longitude"])
         available.append({**slot, "distance_m": round(distance_m, 2)})
 
-    nearest = sorted(available, key=lambda x: x["distance_m"])[: max(1, limit)]
+    nearest = sorted(available, key=lambda x: x["distance_m"])[:limit]
     return {"query": {"latitude": latitude, "longitude": longitude, "limit": limit}, "count": len(nearest), "items": nearest}
 
 
@@ -393,8 +398,6 @@ def ingest_v2p_alert(payload: V2PAlertIngest) -> dict:
         "detected_at": ts.isoformat(),
     }
     V2P_ALERTS.append(alert)
-    if len(V2P_ALERTS) > 500:
-        del V2P_ALERTS[0]
 
     return {
         "message": "v2p alert broadcast",
@@ -404,7 +407,6 @@ def ingest_v2p_alert(payload: V2PAlertIngest) -> dict:
 
 
 @app.get("/api/v1/v2p/alerts")
-def list_v2p_alerts(limit: int = 20) -> dict:
-    capped_limit = max(1, min(limit, 100))
-    items = V2P_ALERTS[-capped_limit:]
+def list_v2p_alerts(limit: int = Query(default=20, ge=1, le=100)) -> dict:
+    items = list(V2P_ALERTS)[-limit:]
     return {"count": len(items), "items": items}
