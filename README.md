@@ -74,13 +74,13 @@ python edge_processor/camera_feed.py --source "rtsp://user:pass@camera-ip:554/st
 
 ```bash
 docker compose up --build
+```
 
 ### 5) Run Fleet Service locally (without Docker)
 
 ```bash
 cd fleet-service
 mvn spring-boot:run
-```
 ```
 
 ## Core API Endpoints
@@ -98,9 +98,9 @@ mvn spring-boot:run
 
 ```bash
 PYTHONPATH=backend pytest backend/tests -q
+```
 
 ```bash
 cd fleet-service
 mvn test
-```
 ```
