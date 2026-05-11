@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from fastapi.testclient import TestClient
 
-from app.main import app, utcnow, SENSOR_STORE, SensorState, ROAD_ANOMALIES
+from app.main import app, utcnow, SENSOR_STORE, SensorState, ROAD_ANOMALIES, LANE_STORE
 
 
 client = TestClient(app)
@@ -11,7 +11,10 @@ client = TestClient(app)
 def test_dynamic_actuation_and_gap_out() -> None:
     lane = "North"
     client.post("/heartbeat/edge-camera-1")
-    client.post("/ingest/traffic", json={"lane": lane, "vehicle_count": 6, "pedestrian_count": 1})
+    client.post(
+        "/ingest/traffic",
+        json={"lane": lane, "vehicle_count": 6, "pedestrian_count": 1, "sensor_id": "edge-camera-1"},
+    )
 
     response = client.post("/traffic/decision", json={"lane": lane, "current_green_elapsed_s": 5})
     assert response.status_code == 200
@@ -20,10 +23,18 @@ def test_dynamic_actuation_and_gap_out() -> None:
     assert body["decision"]["estimated_green_s"] == 17
     assert body["decision"]["terminate_green_early"] is False
 
-    client.post("/ingest/traffic", json={"lane": lane, "vehicle_count": 0, "pedestrian_count": 0})
+    client.post(
+        "/ingest/traffic",
+        json={"lane": lane, "vehicle_count": 0, "pedestrian_count": 0, "sensor_id": "edge-camera-1"},
+    )
     response = client.post("/traffic/decision", json={"lane": lane, "current_green_elapsed_s": 7})
     assert response.status_code == 200
     assert response.json()["decision"]["terminate_green_early"] is False
+
+    LANE_STORE[lane].last_nonzero_vehicle_seen_at = utcnow() - timedelta(seconds=4)
+    response = client.post("/traffic/decision", json={"lane": lane, "current_green_elapsed_s": 7})
+    assert response.status_code == 200
+    assert response.json()["decision"]["terminate_green_early"] is True
 
 
 def test_heartbeat_failure_uses_fallback() -> None:

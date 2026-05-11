@@ -27,6 +27,7 @@ def mock_detect(frame) -> tuple[int, int]:
 
 
 def send_payload(api_base: str, lane: str, vehicle_count: int, pedestrian_count: int, sensor_id: str) -> None:
+    url = f"{api_base}/ingest/traffic"
     payload = {
         "lane": lane,
         "vehicle_count": vehicle_count,
@@ -34,16 +35,38 @@ def send_payload(api_base: str, lane: str, vehicle_count: int, pedestrian_count:
         "sensor_id": sensor_id,
     }
     try:
-        requests.post(f"{api_base}/ingest/traffic", json=payload, timeout=2).raise_for_status()
+        requests.post(url, json=payload, timeout=2).raise_for_status()
     except requests.RequestException as exc:
-        print(json.dumps({"level": "error", "event": "traffic_post_failed", "error": str(exc)}))
+        print(
+            json.dumps(
+                {
+                    "level": "error",
+                    "event": "traffic_post_failed",
+                    "url": url,
+                    "lane": lane,
+                    "sensor_id": sensor_id,
+                    "error": str(exc),
+                }
+            )
+        )
 
 
 def send_heartbeat(api_base: str, sensor_id: str) -> None:
+    url = f"{api_base}/heartbeat/{sensor_id}"
     try:
-        requests.post(f"{api_base}/heartbeat/{sensor_id}", timeout=2).raise_for_status()
+        requests.post(url, timeout=2).raise_for_status()
     except requests.RequestException as exc:
-        print(json.dumps({"level": "error", "event": "heartbeat_post_failed", "error": str(exc)}))
+        print(
+            json.dumps(
+                {
+                    "level": "error",
+                    "event": "heartbeat_post_failed",
+                    "url": url,
+                    "sensor_id": sensor_id,
+                    "error": str(exc),
+                }
+            )
+        )
 
 
 def run(source: str, api_base: str, lane: str, sensor_id: str, interval: float) -> None:
