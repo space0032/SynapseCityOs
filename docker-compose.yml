@@ -1,0 +1,40 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: synapsecity-backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mosquitto
+      - redis
+      - postgres
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: synapsecity-mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+
+  redis:
+    image: redis:7
+    container_name: synapsecity-redis
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:16
+    container_name: synapsecity-postgres
+    environment:
+      POSTGRES_DB: synapsecity
+      POSTGRES_USER: synapse
+      POSTGRES_PASSWORD: synapse
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
