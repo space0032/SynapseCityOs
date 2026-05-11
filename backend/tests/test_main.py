@@ -2,7 +2,19 @@ from datetime import timedelta
 
 from fastapi.testclient import TestClient
 
-from app.main import app, utcnow, SENSOR_STORE, SensorState, ROAD_ANOMALIES, LANE_STORE
+from app.main import (
+    EMERGENCY_API_TOKEN,
+    EMERGENCY_OVERRIDES,
+    LANE_STORE,
+    PARKING_SLOTS,
+    POLLUTION_ZONES,
+    ROAD_ANOMALIES,
+    SENSOR_STORE,
+    V2P_ALERTS,
+    SensorState,
+    app,
+    utcnow,
+)
 
 
 client = TestClient(app)
@@ -64,3 +76,92 @@ def test_road_integrity_anomaly_detection() -> None:
     anomalies = client.get("/ingest/road-integrity/anomalies")
     assert anomalies.status_code == 200
     assert anomalies.json()["count"] == 1
+
+
+def test_emergency_priority_triggers_god_mode_override() -> None:
+    EMERGENCY_OVERRIDES.clear()
+    response = client.post(
+        "/api/v1/emergency/priority-ping",
+        headers={"x-emergency-token": EMERGENCY_API_TOKEN},
+        json={
+            "vehicle_id": "AMB-11",
+            "vehicle_type": "ambulance",
+            "intersection_id": "INT-9",
+            "latitude": 22.31,
+            "longitude": 73.19,
+            "speed": 43.2,
+            "route_intersections": ["INT-9", "INT-10"],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["override_triggered"] is True
+
+    override = client.get("/api/v1/traffic/overrides/INT-9")
+    assert override.status_code == 200
+    assert override.json()["active"] is True
+
+    decision = client.post(
+        "/traffic/decision",
+        json={"lane": "North", "current_green_elapsed_s": 1, "intersection_id": "INT-9"},
+    )
+    assert decision.status_code == 200
+    assert decision.json()["mode"] == "god_mode_override"
+    assert decision.json()["decision"]["cross_traffic_signal"] == "ALL_RED"
+
+
+def test_pollution_high_zone_and_parking_nearest_slots() -> None:
+    POLLUTION_ZONES.clear()
+    PARKING_SLOTS.clear()
+
+    pollution = client.post(
+        "/api/v1/pollution/ingest",
+        json={"zone_id": "ZONE-A", "intersection_id": "INT-A", "aqi": 180, "pm25": 20, "no2": 40},
+    )
+    assert pollution.status_code == 200
+    assert pollution.json()["high_pollution"] is True
+
+    high = client.get("/api/v1/pollution/high")
+    assert high.status_code == 200
+    assert high.json()["count"] == 1
+    assert high.json()["items"][0]["zone_id"] == "ZONE-A"
+
+    client.post(
+        "/api/v1/parking/ingest",
+        json={"slot_id": "P1", "zone_id": "ZONE-A", "latitude": 22.3000, "longitude": 73.2000, "occupied": True},
+    )
+    client.post(
+        "/api/v1/parking/ingest",
+        json={"slot_id": "P2", "zone_id": "ZONE-A", "latitude": 22.3002, "longitude": 73.2002, "occupied": False},
+    )
+    client.post(
+        "/api/v1/parking/ingest",
+        json={"slot_id": "P3", "zone_id": "ZONE-A", "latitude": 22.3010, "longitude": 73.2010, "occupied": False},
+    )
+
+    nearest = client.get("/api/v1/commuter/parking?latitude=22.3001&longitude=73.2001&limit=1")
+    assert nearest.status_code == 200
+    assert nearest.json()["count"] == 1
+    assert nearest.json()["items"][0]["slot_id"] == "P2"
+
+
+def test_v2p_alert_broadcast_feed() -> None:
+    V2P_ALERTS.clear()
+    response = client.post(
+        "/api/v1/v2p/alert",
+        json={
+            "event_id": "EVT-1",
+            "intersection_id": "INT-2",
+            "camera_id": "CAM-9",
+            "latitude": 22.32,
+            "longitude": 73.22,
+            "danger_type": "pedestrian_in_danger",
+            "severity": "critical",
+        },
+    )
+    assert response.status_code == 200
+    assert "pedestrian_app" in response.json()["channels"]
+
+    feed = client.get("/api/v1/v2p/alerts?limit=5")
+    assert feed.status_code == 200
+    assert feed.json()["count"] == 1
+    assert feed.json()["items"][0]["event_id"] == "EVT-1"

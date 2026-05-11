@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import os
+import secrets
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from itertools import islice
+from math import atan2, cos, radians, sin, sqrt
+from typing import Deque, Dict, List, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 
-app = FastAPI(title="Synapse City OS - Phase 1 MVP")
+app = FastAPI(title="Synapse City OS - Phase 3")
 
 
 class TrafficIngest(BaseModel):
@@ -22,6 +27,7 @@ class TrafficDecisionRequest(BaseModel):
     lane: str
     current_green_elapsed_s: int = Field(ge=0, default=0)
     sensor_id: str = "edge-camera-1"
+    intersection_id: Optional[str] = None
 
 
 class RoadIntegrityIngest(BaseModel):
@@ -30,6 +36,46 @@ class RoadIntegrityIngest(BaseModel):
     longitude: float
     z_accel: float
     recorded_at: Optional[datetime] = None
+
+
+class EmergencyPingIngest(BaseModel):
+    vehicle_id: str
+    vehicle_type: str
+    intersection_id: str
+    latitude: float
+    longitude: float
+    speed: float = Field(ge=0)
+    route_intersections: List[str] = Field(default_factory=list)
+    recorded_at: Optional[datetime] = None
+
+
+class PollutionIngest(BaseModel):
+    zone_id: str
+    intersection_id: Optional[str] = None
+    aqi: float = Field(ge=0)
+    pm25: float = Field(ge=0)
+    no2: float = Field(ge=0)
+    recorded_at: Optional[datetime] = None
+
+
+class ParkingSlotIngest(BaseModel):
+    slot_id: str
+    zone_id: str
+    latitude: float
+    longitude: float
+    occupied: bool
+    recorded_at: Optional[datetime] = None
+
+
+class V2PAlertIngest(BaseModel):
+    event_id: str
+    intersection_id: str
+    camera_id: str
+    latitude: float
+    longitude: float
+    danger_type: str
+    severity: str = "high"
+    detected_at: Optional[datetime] = None
 
 
 @dataclass
@@ -52,10 +98,20 @@ HISTORICAL_FALLBACK_SECONDS_BY_HOUR = {
     "off_peak": 20,
 }
 POTHOLE_Z_THRESHOLD = 2.5
+EMERGENCY_OVERRIDE_SECONDS = 60
+EARTH_RADIUS_M = 6371000
+POLLUTION_AQI_THRESHOLD = float(os.getenv("POLLUTION_AQI_THRESHOLD", "150"))
+POLLUTION_PM25_THRESHOLD = float(os.getenv("POLLUTION_PM25_THRESHOLD", "55"))
+POLLUTION_NO2_THRESHOLD = float(os.getenv("POLLUTION_NO2_THRESHOLD", "100"))
+EMERGENCY_API_TOKEN = os.getenv("EMERGENCY_API_TOKEN", "synapse-emergency-token")
 
 LANE_STORE: Dict[str, LaneState] = {}
 SENSOR_STORE: Dict[str, SensorState] = {}
 ROAD_ANOMALIES: List[dict] = []
+EMERGENCY_OVERRIDES: Dict[str, dict] = {}
+POLLUTION_ZONES: Dict[str, dict] = {}
+PARKING_SLOTS: Dict[str, dict] = {}
+V2P_ALERTS: Deque[dict] = deque(maxlen=500)
 
 
 def utcnow() -> datetime:
@@ -101,6 +157,25 @@ def sensor_failed(sensor_id: str, now: Optional[datetime] = None) -> bool:
     return (current - sensor.last_heartbeat_at) > timedelta(seconds=3)
 
 
+def haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    d_lat = radians(lat2 - lat1)
+    d_lon = radians(lon2 - lon1)
+    a = sin(d_lat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lon / 2) ** 2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return EARTH_RADIUS_M * c
+
+
+def active_override(intersection_id: str, now: Optional[datetime] = None) -> Optional[dict]:
+    override = EMERGENCY_OVERRIDES.get(intersection_id)
+    if override is None:
+        return None
+    current = now or utcnow()
+    if datetime.fromisoformat(override["expires_at"]) <= current:
+        EMERGENCY_OVERRIDES.pop(intersection_id, None)
+        return None
+    return override
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -127,6 +202,21 @@ def ingest_traffic(payload: TrafficIngest) -> dict:
 @app.post("/traffic/decision")
 def traffic_decision(payload: TrafficDecisionRequest) -> dict:
     lane = LANE_STORE.setdefault(payload.lane, LaneState())
+
+    if payload.intersection_id:
+        override = active_override(payload.intersection_id)
+        if override:
+            return {
+                "lane": payload.lane,
+                "intersection_id": payload.intersection_id,
+                "mode": "god_mode_override",
+                "sensor_status": "healthy",
+                "decision": {
+                    "cross_traffic_signal": "ALL_RED",
+                    "emergency_path_signal": "GREEN_WAVE",
+                    "expires_at": override["expires_at"],
+                },
+            }
 
     if sensor_failed(payload.sensor_id):
         return {
@@ -193,3 +283,136 @@ def ingest_road_integrity(payload: RoadIntegrityIngest) -> dict:
 @app.get("/ingest/road-integrity/anomalies")
 def road_anomalies() -> dict:
     return {"count": len(ROAD_ANOMALIES), "items": ROAD_ANOMALIES}
+
+
+@app.post("/api/v1/emergency/priority-ping")
+def emergency_priority_ping(
+    payload: EmergencyPingIngest,
+    emergency_token: Optional[str] = Header(default=None, alias="x-emergency-token"),
+) -> dict:
+    if emergency_token is None or not secrets.compare_digest(emergency_token, EMERGENCY_API_TOKEN):
+        raise HTTPException(status_code=401, detail="invalid emergency token")
+
+    now = payload.recorded_at or utcnow()
+    route = payload.route_intersections or [payload.intersection_id]
+
+    for intersection_id in route:
+        EMERGENCY_OVERRIDES[intersection_id] = {
+            "intersection_id": intersection_id,
+            "vehicle_id": payload.vehicle_id,
+            "vehicle_type": payload.vehicle_type,
+            "mode": "god_mode_override",
+            "cross_traffic_signal": "ALL_RED",
+            "emergency_path_signal": "GREEN_WAVE",
+            "created_at": now.isoformat(),
+            "expires_at": (now + timedelta(seconds=EMERGENCY_OVERRIDE_SECONDS)).isoformat(),
+        }
+
+    return {
+        "message": "emergency ping ingested",
+        "vehicle_id": payload.vehicle_id,
+        "path_intersections": route,
+        "override_triggered": True,
+    }
+
+
+@app.get("/api/v1/traffic/overrides/{intersection_id}")
+def get_traffic_override(intersection_id: str) -> dict:
+    override = active_override(intersection_id)
+    return {
+        "intersection_id": intersection_id,
+        "active": override is not None,
+        "override": override,
+    }
+
+
+@app.post("/api/v1/pollution/ingest")
+def ingest_pollution(payload: PollutionIngest) -> dict:
+    now = payload.recorded_at or utcnow()
+    is_high = (
+        payload.aqi >= POLLUTION_AQI_THRESHOLD
+        or payload.pm25 >= POLLUTION_PM25_THRESHOLD
+        or payload.no2 >= POLLUTION_NO2_THRESHOLD
+    )
+    POLLUTION_ZONES[payload.zone_id] = {
+        "zone_id": payload.zone_id,
+        "intersection_id": payload.intersection_id,
+        "aqi": payload.aqi,
+        "pm25": payload.pm25,
+        "no2": payload.no2,
+        "recorded_at": now.isoformat(),
+        "high_pollution": is_high,
+    }
+
+    return {
+        "message": "pollution data ingested",
+        "zone_id": payload.zone_id,
+        "high_pollution": is_high,
+        "suggested_action": "divert_traffic" if is_high else "normal_flow",
+    }
+
+
+@app.get("/api/v1/pollution/high")
+def high_pollution_zones() -> dict:
+    items = [item for item in POLLUTION_ZONES.values() if item["high_pollution"]]
+    return {"count": len(items), "items": items}
+
+
+@app.post("/api/v1/parking/ingest")
+def ingest_parking(payload: ParkingSlotIngest) -> dict:
+    ts = payload.recorded_at or utcnow()
+    PARKING_SLOTS[payload.slot_id] = {
+        "slot_id": payload.slot_id,
+        "zone_id": payload.zone_id,
+        "latitude": payload.latitude,
+        "longitude": payload.longitude,
+        "occupied": payload.occupied,
+        "recorded_at": ts.isoformat(),
+    }
+    return {"message": "parking slot data ingested", "slot_id": payload.slot_id, "occupied": payload.occupied}
+
+
+@app.get("/api/v1/commuter/parking")
+def nearest_available_parking(
+    latitude: float,
+    longitude: float,
+    limit: int = Query(default=5, ge=1, le=100),
+) -> dict:
+    available = []
+    for slot in PARKING_SLOTS.values():
+        if slot["occupied"]:
+            continue
+        distance_m = haversine_meters(latitude, longitude, slot["latitude"], slot["longitude"])
+        available.append({**slot, "distance_m": round(distance_m, 2)})
+
+    nearest = sorted(available, key=lambda x: x["distance_m"])[:limit]
+    return {"query": {"latitude": latitude, "longitude": longitude, "limit": limit}, "count": len(nearest), "items": nearest}
+
+
+@app.post("/api/v1/v2p/alert")
+def ingest_v2p_alert(payload: V2PAlertIngest) -> dict:
+    ts = payload.detected_at or utcnow()
+    alert = {
+        "event_id": payload.event_id,
+        "intersection_id": payload.intersection_id,
+        "camera_id": payload.camera_id,
+        "latitude": payload.latitude,
+        "longitude": payload.longitude,
+        "danger_type": payload.danger_type,
+        "severity": payload.severity,
+        "detected_at": ts.isoformat(),
+    }
+    V2P_ALERTS.append(alert)
+
+    return {
+        "message": "v2p alert broadcast",
+        "channels": ["pedestrian_app", "vehicle_dashboard"],
+        "alert": alert,
+    }
+
+
+@app.get("/api/v1/v2p/alerts")
+def list_v2p_alerts(limit: int = Query(default=20, ge=1, le=100)) -> dict:
+    items = list(islice(reversed(V2P_ALERTS), limit))
+    items.reverse()
+    return {"count": len(items), "items": items}

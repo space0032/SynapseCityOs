@@ -6,6 +6,11 @@ services:
     container_name: synapsecity-backend
     ports:
       - "8000:8000"
+    environment:
+      EMERGENCY_API_TOKEN: synapse-emergency-token
+      POLLUTION_AQI_THRESHOLD: "150"
+      POLLUTION_PM25_THRESHOLD: "55"
+      POLLUTION_NO2_THRESHOLD: "100"
     depends_on:
       - mosquitto
       - redis
