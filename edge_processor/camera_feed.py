@@ -26,6 +26,11 @@ def mock_detect(frame) -> tuple[int, int]:
     return vehicle_count, pedestrian_count
 
 
+def status_code_from_exception(exc: requests.RequestException):
+    response = getattr(exc, "response", None)
+    return getattr(response, "status_code", None)
+
+
 def send_payload(api_base: str, lane: str, vehicle_count: int, pedestrian_count: int, sensor_id: str) -> None:
     url = f"{api_base}/ingest/traffic"
     payload = {
@@ -45,6 +50,7 @@ def send_payload(api_base: str, lane: str, vehicle_count: int, pedestrian_count:
                     "url": url,
                     "lane": lane,
                     "sensor_id": sensor_id,
+                    "status_code": status_code_from_exception(exc),
                     "error": str(exc),
                 }
             )
@@ -63,6 +69,7 @@ def send_heartbeat(api_base: str, sensor_id: str) -> None:
                     "event": "heartbeat_post_failed",
                     "url": url,
                     "sensor_id": sensor_id,
+                    "status_code": status_code_from_exception(exc),
                     "error": str(exc),
                 }
             )
