@@ -284,8 +284,11 @@ def road_anomalies() -> dict:
 
 
 @app.post("/api/v1/emergency/priority-ping")
-def emergency_priority_ping(payload: EmergencyPingIngest, x_emergency_token: Optional[str] = Header(default=None)) -> dict:
-    if x_emergency_token != EMERGENCY_API_TOKEN:
+def emergency_priority_ping(
+    payload: EmergencyPingIngest,
+    x_emergency_token_header: Optional[str] = Header(default=None, alias="x-emergency-token"),
+) -> dict:
+    if x_emergency_token_header != EMERGENCY_API_TOKEN:
         raise HTTPException(status_code=401, detail="invalid emergency token")
 
     now = payload.recorded_at or utcnow()
