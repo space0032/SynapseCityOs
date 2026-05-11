@@ -1,4 +1,4 @@
-# Synapse City OS (Phase 1 + Phase 2)
+# Synapse City OS (Phase 1 + Phase 2 + Phase 3)
 
 This repository contains:
 
@@ -41,6 +41,22 @@ This repository contains:
   - Emits a simulated traffic-light **priority request** event when a late bus is approaching a configured intersection.
 - **Commuter API**
   - `GET /api/v1/commuter/buses/{route_id}` returns real-time buses for a route with location and `occupancy_status` (`EMPTY`, `MODERATE`, `FULL`).
+
+## Architecture (Phase 3)
+
+- **Emergency Priority Service (God Mode)** (`backend/app/main.py`)
+  - `POST /api/v1/emergency/priority-ping` ingests secure emergency GPS pings (`x-emergency-token` header).
+  - Triggers immediate traffic override events with `ALL_RED` cross-traffic and `GREEN_WAVE` for emergency route intersections.
+  - `GET /api/v1/traffic/overrides/{intersection_id}` exposes active override state.
+- **Pollution & Air Quality Monitor**
+  - `POST /api/v1/pollution/ingest` ingests AQI/PM2.5/NO2 sensor data by zone/intersection.
+  - `GET /api/v1/pollution/high` lists zones currently flagged as high pollution for diversion decisions.
+- **Smart Parking API**
+  - `POST /api/v1/parking/ingest` ingests parking slot occupancy updates.
+  - `GET /api/v1/commuter/parking` returns nearest available slots for commuter apps.
+- **V2P Haptic Alerts**
+  - `POST /api/v1/v2p/alert` ingests pedestrian-in-danger events from edge cameras.
+  - `GET /api/v1/v2p/alerts` provides a low-latency alert feed for pedestrian apps and vehicle dashboards.
 
 ## Quick Start
 
@@ -93,6 +109,14 @@ mvn spring-boot:run
 - `GET /ingest/road-integrity/anomalies` – list detected anomalies
 - `POST /api/v1/fleet/telemetry` – ingest fleet telemetry and trigger priority requests for late buses near intersections
 - `GET /api/v1/commuter/buses/{route_id}` – commuter route view with bus locations + occupancy status
+- `POST /api/v1/emergency/priority-ping` – secure emergency vehicle GPS ping with God Mode override trigger
+- `GET /api/v1/traffic/overrides/{intersection_id}` – read current emergency override state for an intersection
+- `POST /api/v1/pollution/ingest` – ingest AQI/PM2.5/NO2 readings by zone
+- `GET /api/v1/pollution/high` – list high-pollution zones for traffic diversion
+- `POST /api/v1/parking/ingest` – ingest parking occupancy updates from IoT sensors
+- `GET /api/v1/commuter/parking` – return nearest available parking slots by commuter location
+- `POST /api/v1/v2p/alert` – ingest and broadcast pedestrian danger alerts
+- `GET /api/v1/v2p/alerts` – list latest V2P broadcast alerts
 
 ## Tests
 
