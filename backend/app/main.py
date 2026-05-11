@@ -21,6 +21,7 @@ class TrafficIngest(BaseModel):
 class TrafficDecisionRequest(BaseModel):
     lane: str
     current_green_elapsed_s: int = Field(ge=0, default=0)
+    sensor_id: str = "edge-camera-1"
 
 
 class RoadIntegrityIngest(BaseModel):
@@ -124,10 +125,10 @@ def ingest_traffic(payload: TrafficIngest) -> dict:
 
 
 @app.post("/traffic/decision")
-def traffic_decision(payload: TrafficDecisionRequest, sensor_id: str = "edge-camera-1") -> dict:
+def traffic_decision(payload: TrafficDecisionRequest) -> dict:
     lane = LANE_STORE.setdefault(payload.lane, LaneState())
 
-    if sensor_failed(sensor_id):
+    if sensor_failed(payload.sensor_id):
         return {
             "lane": payload.lane,
             "mode": "historical_fallback",

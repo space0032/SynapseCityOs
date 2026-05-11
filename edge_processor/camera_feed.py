@@ -33,11 +33,17 @@ def send_payload(api_base: str, lane: str, vehicle_count: int, pedestrian_count:
         "pedestrian_count": pedestrian_count,
         "sensor_id": sensor_id,
     }
-    requests.post(f"{api_base}/ingest/traffic", json=payload, timeout=2)
+    try:
+        requests.post(f"{api_base}/ingest/traffic", json=payload, timeout=2).raise_for_status()
+    except requests.RequestException as exc:
+        print(json.dumps({"level": "error", "event": "traffic_post_failed", "error": str(exc)}))
 
 
 def send_heartbeat(api_base: str, sensor_id: str) -> None:
-    requests.post(f"{api_base}/heartbeat/{sensor_id}", timeout=2)
+    try:
+        requests.post(f"{api_base}/heartbeat/{sensor_id}", timeout=2).raise_for_status()
+    except requests.RequestException as exc:
+        print(json.dumps({"level": "error", "event": "heartbeat_post_failed", "error": str(exc)}))
 
 
 def run(source: str, api_base: str, lane: str, sensor_id: str, interval: float) -> None:
