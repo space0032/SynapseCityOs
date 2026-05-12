@@ -1,4 +1,4 @@
-# Synapse City OS (Phase 1 + Phase 2 + Phase 3 + Phase 4)
+# Synapse City OS (Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5)
 
 This repository contains:
 
@@ -75,6 +75,14 @@ This repository contains:
     - pothole reports with coordinates
     - active emergency and high-pollution alerts
 
+## Architecture (Phase 5)
+
+- **Commuter Mobile App (Citizen Portal)** (`commuter-app`)
+  - React Native + Expo cross-platform app scaffold.
+  - Live Transit Dashboard via API Gateway `GET /api/public/commuter`.
+  - Smart Parking Finder + Air Quality routing suggestions from the same commuter aggregate response.
+  - Mock V2P safety listener using optional WebSocket input plus background simulation for danger events.
+
 ## Quick Start
 
 ### 1) Install dependencies
@@ -128,6 +136,14 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 9000
 
 - With Docker Compose: http://localhost:3000
 - Dashboard reads data from API Gateway at http://localhost:9000
+
+### 8) Run Commuter Mobile App (Phase 5)
+
+```bash
+cd commuter-app
+npm install
+npx expo start
+```
 
 ## Core API Endpoints
 
