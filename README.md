@@ -1,10 +1,11 @@
-# Synapse City OS (Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5)
+# Synapse City OS (Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5 + Phase 6)
 
 This repository contains:
 
 - **Phase 1 MVP** for adaptive traffic, sensor heartbeat failover, and road-integrity anomaly ingestion.
 - **Phase 2 Fleet & Public Transit Integration** with a Java Spring Boot fleet-service.
 - **Phase 4 City Admin Dashboard & API Gateway** with a frontend MVP and unified BFF routes.
+- **Phase 6 Advanced AI Prediction Engine** with periodic forecasting + proactive traffic-signal alerts backed by InfluxDB.
 
 ## Architecture (Phase 1)
 
@@ -83,6 +84,16 @@ This repository contains:
   - Smart Parking Finder + Air Quality routing suggestions from the same commuter aggregate response.
   - Mock V2P safety listener using optional WebSocket input plus background simulation for danger events.
 
+## Architecture (Phase 6)
+
+- **Prediction Engine** (`prediction-engine/app/main.py`)
+  - Trains a periodic traffic forecasting model (`scikit-learn`) from mock historical traffic + delay data.
+  - Stores seeded/training time-series points in **InfluxDB** (`traffic_history` measurement).
+  - `POST /api/v1/prediction/forecast` predicts traffic 15-30 minutes ahead and pushes high-congestion alerts to backend.
+- **Traffic Light Manager Predictive Control** (`backend/app/main.py`)
+  - `POST /api/v1/traffic/predictive-alert` ingests prediction-engine alerts (secured by `x-prediction-token`).
+  - `/traffic/decision` preemptively increases `max_green_s` for lanes with active high-congestion predictions.
+
 ## Quick Start
 
 ### 1) Install dependencies
@@ -145,6 +156,30 @@ npm install
 npx expo start
 ```
 
+### 9) Run Prediction Engine (Phase 6)
+
+```bash
+cd prediction-engine
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 9100
+```
+
+Seed mock historical data into InfluxDB:
+
+```bash
+curl -X POST http://localhost:9100/api/v1/prediction/mock-seed \
+  -H "Content-Type: application/json" \
+  -d '{"rows": 288}'
+```
+
+Run a forecast and proactive traffic alert:
+
+```bash
+curl -X POST http://localhost:9100/api/v1/prediction/forecast \
+  -H "Content-Type: application/json" \
+  -d '{"lane":"North","intersection_id":"INT-1","current_vehicle_count":26,"bus_delay_minutes":8,"lead_minutes":30}'
+```
+
 ## Core API Endpoints
 
 - `POST /ingest/traffic` – ingest lane traffic counts
@@ -169,6 +204,10 @@ npx expo start
 - `GET /api/admin/road-health` – admin dashboard pothole panel data from API Gateway
 - `GET /api/admin/active-alerts` – admin dashboard alerts panel data from API Gateway
 - `GET /api/public/commuter` – unified commuter API route (bus tracking + parking + air quality)
+- `POST /api/v1/traffic/predictive-alert` – ingest high-congestion prediction alerts for proactive signal timing
+- `POST /api/v1/prediction/train` – retrain prediction model from mock historical data
+- `POST /api/v1/prediction/mock-seed` – seed mock historical time-series traffic data into InfluxDB
+- `POST /api/v1/prediction/forecast` – predict lane congestion 15-30 minutes ahead and trigger proactive alerting
 
 ## Tests
 

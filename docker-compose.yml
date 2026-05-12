@@ -32,6 +32,7 @@ services:
       - "8000:8000"
     environment:
       EMERGENCY_API_TOKEN: synapse-emergency-token
+      PREDICTION_ENGINE_TOKEN: synapse-prediction-token
       POLLUTION_AQI_THRESHOLD: "150"
       POLLUTION_PM25_THRESHOLD: "55"
       POLLUTION_NO2_THRESHOLD: "100"
@@ -39,6 +40,7 @@ services:
       - mosquitto
       - redis
       - postgres
+      - influxdb
 
   fleet-service:
     build:
@@ -73,5 +75,41 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  influxdb:
+    image: influxdb:2.7
+    container_name: synapsecity-influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: synapse
+      DOCKER_INFLUXDB_INIT_PASSWORD: synapse123
+      DOCKER_INFLUXDB_INIT_ORG: synapse-city
+      DOCKER_INFLUXDB_INIT_BUCKET: traffic_analytics
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: synapse-influx-token
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+
+  prediction-engine:
+    build:
+      context: ./prediction-engine
+      dockerfile: Dockerfile
+    container_name: synapsecity-prediction-engine
+    ports:
+      - "9100:9100"
+    environment:
+      BACKEND_BASE_URL: http://backend:8000
+      PREDICTION_ENGINE_TOKEN: synapse-prediction-token
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_ORG: synapse-city
+      INFLUX_BUCKET: traffic_analytics
+      INFLUX_TOKEN: synapse-influx-token
+      MODEL_UPDATE_INTERVAL_SECONDS: "300"
+      HIGH_CONGESTION_THRESHOLD: "30"
+    depends_on:
+      - backend
+      - influxdb
+
 volumes:
   postgres_data:
+  influxdb_data:

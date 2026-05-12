@@ -1,0 +1,5 @@
+fastapi==0.116.0
+uvicorn==0.35.0
+httpx==0.27.2
+scikit-learn==1.5.1
+influxdb-client==1.46.0
