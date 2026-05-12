@@ -165,3 +165,39 @@ def test_v2p_alert_broadcast_feed() -> None:
     assert feed.status_code == 200
     assert feed.json()["count"] == 1
     assert feed.json()["items"][0]["event_id"] == "EVT-1"
+
+
+def test_admin_live_traffic_status() -> None:
+    LANE_STORE.clear()
+    client.post("/ingest/traffic", json={"lane": "INT-1", "vehicle_count": 4, "pedestrian_count": 0, "sensor_id": "edge-camera-1"})
+    client.post("/ingest/traffic", json={"lane": "INT-2", "vehicle_count": 0, "pedestrian_count": 1, "sensor_id": "edge-camera-1"})
+
+    response = client.get("/api/v1/admin/live-traffic")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 2
+    assert body["items"][0]["intersection_id"] == "INT-1"
+    assert body["items"][0]["signal_state"] == "GREEN"
+    assert body["items"][1]["signal_state"] == "RED"
+
+
+def test_list_active_traffic_overrides() -> None:
+    EMERGENCY_OVERRIDES.clear()
+    client.post(
+        "/api/v1/emergency/priority-ping",
+        headers={"x-emergency-token": EMERGENCY_API_TOKEN},
+        json={
+            "vehicle_id": "FIRE-2",
+            "vehicle_type": "fire_truck",
+            "intersection_id": "INT-5",
+            "latitude": 22.31,
+            "longitude": 73.19,
+            "speed": 52.3,
+            "route_intersections": ["INT-5"],
+        },
+    )
+
+    response = client.get("/api/v1/traffic/overrides")
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert response.json()["items"][0]["intersection_id"] == "INT-5"

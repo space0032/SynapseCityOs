@@ -326,6 +326,16 @@ def get_traffic_override(intersection_id: str) -> dict:
     }
 
 
+@app.get("/api/v1/traffic/overrides")
+def list_traffic_overrides() -> dict:
+    active = []
+    for intersection_id in list(EMERGENCY_OVERRIDES.keys()):
+        override = active_override(intersection_id)
+        if override is not None:
+            active.append(override)
+    return {"count": len(active), "items": active}
+
+
 @app.post("/api/v1/pollution/ingest")
 def ingest_pollution(payload: PollutionIngest) -> dict:
     now = payload.recorded_at or utcnow()
@@ -416,3 +426,18 @@ def list_v2p_alerts(limit: int = Query(default=20, ge=1, le=100)) -> dict:
     items = list(islice(reversed(V2P_ALERTS), limit))
     items.reverse()
     return {"count": len(items), "items": items}
+
+
+@app.get("/api/v1/admin/live-traffic")
+def admin_live_traffic() -> dict:
+    intersections = []
+    for lane_name in sorted(LANE_STORE.keys()):
+        lane = LANE_STORE[lane_name]
+        intersections.append(
+            {
+                "intersection_id": lane_name,
+                "signal_state": "GREEN" if lane.vehicle_count > 0 else "RED",
+                "vehicle_count": lane.vehicle_count,
+            }
+        )
+    return {"count": len(intersections), "items": intersections}

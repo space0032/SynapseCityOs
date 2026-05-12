@@ -1,9 +1,10 @@
-# Synapse City OS (Phase 1 + Phase 2 + Phase 3)
+# Synapse City OS (Phase 1 + Phase 2 + Phase 3 + Phase 4)
 
 This repository contains:
 
 - **Phase 1 MVP** for adaptive traffic, sensor heartbeat failover, and road-integrity anomaly ingestion.
 - **Phase 2 Fleet & Public Transit Integration** with a Java Spring Boot fleet-service.
+- **Phase 4 City Admin Dashboard & API Gateway** with a frontend MVP and unified BFF routes.
 
 ## Architecture (Phase 1)
 
@@ -58,6 +59,22 @@ This repository contains:
   - `POST /api/v1/v2p/alert` ingests pedestrian-in-danger events from edge cameras.
   - `GET /api/v1/v2p/alerts` provides a low-latency alert feed for pedestrian apps and vehicle dashboards.
 
+## Architecture (Phase 4)
+
+- **API Gateway / BFF** (`api-gateway/app/main.py`)
+  - Unified proxy routes so frontend/mobile clients do not call each microservice directly.
+  - Admin aggregate routes:
+    - `GET /api/admin/live-traffic`
+    - `GET /api/admin/road-health`
+    - `GET /api/admin/active-alerts`
+  - Public commuter aggregate route:
+    - `GET /api/public/commuter?route_id=...&latitude=...&longitude=...`
+- **City Admin Dashboard (MVP)** (`admin-dashboard/index.html`)
+  - Browser dashboard panels for:
+    - live intersection signal/vehicle status
+    - pothole reports with coordinates
+    - active emergency and high-pollution alerts
+
 ## Quick Start
 
 ### 1) Install dependencies
@@ -99,6 +116,19 @@ cd fleet-service
 mvn spring-boot:run
 ```
 
+### 6) Run API Gateway locally
+
+```bash
+cd api-gateway
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 9000
+```
+
+### 7) Open Admin Dashboard
+
+- With Docker Compose: http://localhost:3000
+- Dashboard reads data from API Gateway at http://localhost:9000
+
 ## Core API Endpoints
 
 - `POST /ingest/traffic` – ingest lane traffic counts
@@ -117,11 +147,21 @@ mvn spring-boot:run
 - `GET /api/v1/commuter/parking` – return nearest available parking slots by commuter location
 - `POST /api/v1/v2p/alert` – ingest and broadcast pedestrian danger alerts
 - `GET /api/v1/v2p/alerts` – list latest V2P broadcast alerts
+- `GET /api/v1/admin/live-traffic` – list live intersection state and vehicle counts
+- `GET /api/v1/traffic/overrides` – list all currently active emergency overrides
+- `GET /api/admin/live-traffic` – admin dashboard traffic panel data from API Gateway
+- `GET /api/admin/road-health` – admin dashboard pothole panel data from API Gateway
+- `GET /api/admin/active-alerts` – admin dashboard alerts panel data from API Gateway
+- `GET /api/public/commuter` – unified commuter API route (bus tracking + parking + air quality)
 
 ## Tests
 
 ```bash
 PYTHONPATH=backend pytest backend/tests -q
+```
+
+```bash
+PYTHONPATH=api-gateway pytest api-gateway/tests -q
 ```
 
 ```bash

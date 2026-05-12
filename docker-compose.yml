@@ -1,4 +1,28 @@
 services:
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: synapsecity-api-gateway
+    ports:
+      - "9000:9000"
+    environment:
+      BACKEND_BASE_URL: http://backend:8000
+      FLEET_BASE_URL: http://fleet-service:8080
+    depends_on:
+      - backend
+      - fleet-service
+
+  admin-dashboard:
+    build:
+      context: ./admin-dashboard
+      dockerfile: Dockerfile
+    container_name: synapsecity-admin-dashboard
+    ports:
+      - "3000:80"
+    depends_on:
+      - api-gateway
+
   backend:
     build:
       context: .
