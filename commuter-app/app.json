@@ -21,7 +21,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": true
     },
     "web": {
       "favicon": "./assets/favicon.png"

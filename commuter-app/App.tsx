@@ -16,6 +16,8 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:9
 const DEFAULT_ROUTE_ID = "R1";
 const DEFAULT_LATITUDE = "22.3000";
 const DEFAULT_LONGITUDE = "73.2000";
+const MOCK_V2P_ALERT_INTERVAL_MS = Number(process.env.EXPO_PUBLIC_V2P_ALERT_INTERVAL_MS ?? "15000");
+const MOCK_V2P_ALERT_PROBABILITY = Number(process.env.EXPO_PUBLIC_V2P_ALERT_PROBABILITY ?? "0.15");
 
 type BusItem = {
   bus_id: string;
@@ -140,12 +142,12 @@ export default function App() {
     }
 
     const timer = setInterval(() => {
-      if (Math.random() < 0.15) {
+      if (Math.random() < MOCK_V2P_ALERT_PROBABILITY) {
         const message = "⚠️ V2P warning: approaching conflict zone.";
         setV2pAlert({ active: true, message });
         Vibration.vibrate([0, 250, 150, 250]);
       }
-    }, 15000);
+    }, MOCK_V2P_ALERT_INTERVAL_MS);
 
     return () => {
       clearInterval(timer);

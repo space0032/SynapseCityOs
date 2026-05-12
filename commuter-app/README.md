@@ -18,6 +18,8 @@ This app reads the API Gateway base URL from:
 Optional V2P socket simulation endpoint:
 
 - `EXPO_PUBLIC_V2P_WS_URL` (if set, the app listens for incoming JSON danger events)
+- `EXPO_PUBLIC_V2P_ALERT_INTERVAL_MS` (default `15000`)
+- `EXPO_PUBLIC_V2P_ALERT_PROBABILITY` (default `0.15`)
 
 Create a `.env` file in this folder if needed:
 
@@ -25,6 +27,8 @@ Create a `.env` file in this folder if needed:
 EXPO_PUBLIC_API_BASE_URL=http://localhost:9000
 # For Android emulator use http://10.0.2.2:9000
 # For physical device use your machine LAN IP, e.g. http://192.168.1.50:9000
+EXPO_PUBLIC_V2P_ALERT_INTERVAL_MS=15000
+EXPO_PUBLIC_V2P_ALERT_PROBABILITY=0.15
 ```
 
 ## Run Locally
