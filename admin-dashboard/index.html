@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Synapse City Admin Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; }
+    header { padding: 16px 20px; background: #1e293b; }
+    h1 { margin: 0; font-size: 22px; }
+    main { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; padding: 16px; }
+    .panel { background: #1e293b; border-radius: 10px; padding: 14px; box-shadow: 0 0 0 1px #334155 inset; }
+    .panel h2 { margin-top: 0; font-size: 18px; }
+    ul { margin: 0; padding-left: 18px; }
+    li { margin-bottom: 8px; }
+    .state-green { color: #22c55e; }
+    .state-red { color: #f87171; }
+    .meta { font-size: 12px; color: #94a3b8; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Synapse City OS - Admin Dashboard (Phase 4 MVP)</h1>
+  </header>
+  <main>
+    <section class="panel">
+      <h2>Live Traffic Status</h2>
+      <ul id="traffic-list"></ul>
+    </section>
+    <section class="panel">
+      <h2>Road Health</h2>
+      <ul id="road-list"></ul>
+    </section>
+    <section class="panel">
+      <h2>Active Alerts</h2>
+      <ul id="alerts-list"></ul>
+    </section>
+  </main>
+  <script>
+    const API_BASE = window.location.origin.replace(':3000', ':9000');
+
+    function renderList(container, rows) {
+      container.innerHTML = '';
+      if (!rows.length) {
+        container.innerHTML = '<li>No data available.</li>';
+        return;
+      }
+      rows.forEach((row) => {
+        const li = document.createElement('li');
+        li.innerHTML = row;
+        container.appendChild(li);
+      });
+    }
+
+    async function loadDashboard() {
+      try {
+        const [traffic, road, alerts] = await Promise.all([
+          fetch(`${API_BASE}/api/admin/live-traffic`).then((r) => r.json()),
+          fetch(`${API_BASE}/api/admin/road-health`).then((r) => r.json()),
+          fetch(`${API_BASE}/api/admin/active-alerts`).then((r) => r.json())
+        ]);
+
+        renderList(
+          document.getElementById('traffic-list'),
+          (traffic.items || []).map((item) =>
+            `Intersection <b>${item.intersection_id}</b> - <span class="state-${item.signal_state.toLowerCase()}">${item.signal_state}</span> (${item.vehicle_count} vehicles)`
+          )
+        );
+
+        renderList(
+          document.getElementById('road-list'),
+          (road.items || []).map((item) =>
+            `Pothole reported at (${item.latitude}, ${item.longitude})`
+          )
+        );
+
+        const emergency = (alerts.emergency_overrides && alerts.emergency_overrides.items) || [];
+        const pollution = (alerts.high_pollution_zones && alerts.high_pollution_zones.items) || [];
+        renderList(
+          document.getElementById('alerts-list'),
+          [
+            ...emergency.map((item) => `Emergency override at <b>${item.intersection_id}</b>`),
+            ...pollution.map((item) => `High pollution in zone <b>${item.zone_id}</b>`)
+          ]
+        );
+      } catch (err) {
+        renderList(document.getElementById('traffic-list'), ['Failed to load traffic data']);
+        renderList(document.getElementById('road-list'), ['Failed to load road health data']);
+        renderList(document.getElementById('alerts-list'), ['Failed to load alerts']);
+      }
+    }
+
+    loadDashboard();
+    setInterval(loadDashboard, 10000);
+  </script>
+</body>
+</html>
