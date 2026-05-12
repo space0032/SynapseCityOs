@@ -78,6 +78,15 @@ class V2PAlertIngest(BaseModel):
     detected_at: Optional[datetime] = None
 
 
+class PredictiveCongestionAlertIngest(BaseModel):
+    lane: str
+    intersection_id: Optional[str] = None
+    predicted_vehicle_count: int = Field(ge=0)
+    predicted_for_minutes: int = Field(default=30, ge=15, le=30)
+    recommended_max_green_s: int = Field(default=150, ge=120, le=180)
+    expires_in_minutes: int = Field(default=30, ge=1, le=60)
+
+
 @dataclass
 class LaneState:
     vehicle_count: int = 0
@@ -104,6 +113,7 @@ POLLUTION_AQI_THRESHOLD = float(os.getenv("POLLUTION_AQI_THRESHOLD", "150"))
 POLLUTION_PM25_THRESHOLD = float(os.getenv("POLLUTION_PM25_THRESHOLD", "55"))
 POLLUTION_NO2_THRESHOLD = float(os.getenv("POLLUTION_NO2_THRESHOLD", "100"))
 EMERGENCY_API_TOKEN = os.getenv("EMERGENCY_API_TOKEN", "synapse-emergency-token")
+PREDICTION_ENGINE_TOKEN = os.getenv("PREDICTION_ENGINE_TOKEN", "synapse-prediction-token")
 
 LANE_STORE: Dict[str, LaneState] = {}
 SENSOR_STORE: Dict[str, SensorState] = {}
@@ -112,6 +122,7 @@ EMERGENCY_OVERRIDES: Dict[str, dict] = {}
 POLLUTION_ZONES: Dict[str, dict] = {}
 PARKING_SLOTS: Dict[str, dict] = {}
 V2P_ALERTS: Deque[dict] = deque(maxlen=500)
+PREDICTIVE_CONGESTION_ALERTS: Dict[str, dict] = {}
 
 
 def utcnow() -> datetime:
@@ -127,11 +138,30 @@ def historical_fallback_timer(now: Optional[datetime] = None) -> int:
     )
 
 
+def active_predictive_alert(lane_name: str, now: Optional[datetime] = None) -> Optional[dict]:
+    alert = PREDICTIVE_CONGESTION_ALERTS.get(lane_name)
+    if alert is None:
+        return None
+    current = now or utcnow()
+    if alert["expires_at_dt"] <= current:
+        PREDICTIVE_CONGESTION_ALERTS.pop(lane_name, None)
+        return None
+    return alert
+
+
 def evaluate_dynamic_actuation(
-    lane: LaneState, current_green_elapsed_s: int, now: Optional[datetime] = None
+    lane: LaneState,
+    current_green_elapsed_s: int,
+    now: Optional[datetime] = None,
+    predictive_alert: Optional[dict] = None,
 ) -> dict:
     current = now or utcnow()
-    estimated_green = min(MAX_GREEN_SECONDS, max(MIN_GREEN_SECONDS, MIN_GREEN_SECONDS + lane.vehicle_count * 2))
+    max_green = MAX_GREEN_SECONDS
+    public_predictive_alert = None
+    if predictive_alert is not None:
+        max_green = predictive_alert["recommended_max_green_s"]
+        public_predictive_alert = {k: v for k, v in predictive_alert.items() if k != "expires_at_dt"}
+    estimated_green = min(max_green, max(MIN_GREEN_SECONDS, MIN_GREEN_SECONDS + lane.vehicle_count * 2))
 
     can_gap_out = current_green_elapsed_s >= MIN_GREEN_SECONDS and lane.vehicle_count == 0
     no_recent_vehicle = (
@@ -142,10 +172,12 @@ def evaluate_dynamic_actuation(
 
     return {
         "min_green_s": MIN_GREEN_SECONDS,
-        "max_green_s": MAX_GREEN_SECONDS,
+        "max_green_s": max_green,
         "estimated_green_s": estimated_green,
         "gap_out": gap_out,
         "terminate_green_early": gap_out,
+        "proactive_adjustment_applied": predictive_alert is not None,
+        "predictive_alert": public_predictive_alert,
     }
 
 
@@ -202,6 +234,7 @@ def ingest_traffic(payload: TrafficIngest) -> dict:
 @app.post("/traffic/decision")
 def traffic_decision(payload: TrafficDecisionRequest) -> dict:
     lane = LANE_STORE.setdefault(payload.lane, LaneState())
+    predictive_alert = active_predictive_alert(payload.lane)
 
     if payload.intersection_id:
         override = active_override(payload.intersection_id)
@@ -237,7 +270,11 @@ def traffic_decision(payload: TrafficDecisionRequest) -> dict:
         "lane": payload.lane,
         "mode": "dynamic",
         "sensor_status": "healthy",
-        "decision": evaluate_dynamic_actuation(lane, payload.current_green_elapsed_s),
+        "decision": evaluate_dynamic_actuation(
+            lane,
+            payload.current_green_elapsed_s,
+            predictive_alert=predictive_alert,
+        ),
     }
 
 
@@ -426,6 +463,35 @@ def list_v2p_alerts(limit: int = Query(default=20, ge=1, le=100)) -> dict:
     items = list(islice(reversed(V2P_ALERTS), limit))
     items.reverse()
     return {"count": len(items), "items": items}
+
+
+@app.post("/api/v1/traffic/predictive-alert")
+def ingest_predictive_traffic_alert(
+    payload: PredictiveCongestionAlertIngest,
+    prediction_token: Optional[str] = Header(default=None, alias="x-prediction-token"),
+) -> dict:
+    if not prediction_token or not secrets.compare_digest(prediction_token, PREDICTION_ENGINE_TOKEN):
+        raise HTTPException(status_code=401, detail="invalid prediction token")
+
+    now = utcnow()
+    lane_name = payload.lane
+    PREDICTIVE_CONGESTION_ALERTS[lane_name] = {
+        "lane": lane_name,
+        "intersection_id": payload.intersection_id,
+        "predicted_vehicle_count": payload.predicted_vehicle_count,
+        "predicted_for_minutes": payload.predicted_for_minutes,
+        "recommended_max_green_s": payload.recommended_max_green_s,
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=payload.expires_in_minutes)).isoformat(),
+        "expires_at_dt": now + timedelta(minutes=payload.expires_in_minutes),
+    }
+    public_alert = {k: v for k, v in PREDICTIVE_CONGESTION_ALERTS[lane_name].items() if k != "expires_at_dt"}
+    return {
+        "message": "predictive congestion alert ingested",
+        "lane": lane_name,
+        "preemptive_signal_adjustment": True,
+        "alert": public_alert,
+    }
 
 
 @app.get("/api/v1/admin/live-traffic")

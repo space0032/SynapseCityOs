@@ -7,11 +7,14 @@ from app.main import (
     EMERGENCY_OVERRIDES,
     LANE_STORE,
     PARKING_SLOTS,
+    PREDICTION_ENGINE_TOKEN,
+    PREDICTIVE_CONGESTION_ALERTS,
     POLLUTION_ZONES,
     ROAD_ANOMALIES,
     SENSOR_STORE,
     V2P_ALERTS,
     SensorState,
+    active_predictive_alert,
     app,
     utcnow,
 )
@@ -201,3 +204,53 @@ def test_list_active_traffic_overrides() -> None:
     assert response.status_code == 200
     assert response.json()["count"] == 1
     assert response.json()["items"][0]["intersection_id"] == "INT-5"
+
+
+def test_predictive_alert_preemptive_green_adjustment() -> None:
+    lane = "North-Predictive"
+    LANE_STORE.pop(lane, None)
+    PREDICTIVE_CONGESTION_ALERTS.clear()
+    client.post("/heartbeat/edge-camera-1")
+    client.post(
+        "/ingest/traffic",
+        json={"lane": lane, "vehicle_count": 8, "pedestrian_count": 0, "sensor_id": "edge-camera-1"},
+    )
+
+    ingest = client.post(
+        "/api/v1/traffic/predictive-alert",
+        headers={"x-prediction-token": PREDICTION_ENGINE_TOKEN},
+        json={
+            "lane": lane,
+            "intersection_id": "INT-77",
+            "predicted_vehicle_count": 34,
+            "predicted_for_minutes": 30,
+            "recommended_max_green_s": 170,
+            "expires_in_minutes": 15,
+        },
+    )
+    assert ingest.status_code == 200
+
+    decision = client.post("/traffic/decision", json={"lane": lane, "current_green_elapsed_s": 7})
+    assert decision.status_code == 200
+    body = decision.json()
+    assert body["mode"] == "dynamic"
+    assert body["decision"]["proactive_adjustment_applied"] is True
+    assert body["decision"]["max_green_s"] == 170
+    assert body["decision"]["predictive_alert"]["intersection_id"] == "INT-77"
+
+
+def test_expired_predictive_alert_is_removed() -> None:
+    lane = "North-Expired"
+    PREDICTIVE_CONGESTION_ALERTS[lane] = {
+        "lane": lane,
+        "intersection_id": "INT-99",
+        "predicted_vehicle_count": 40,
+        "predicted_for_minutes": 30,
+        "recommended_max_green_s": 160,
+        "created_at": utcnow().isoformat(),
+        "expires_at": (utcnow() - timedelta(minutes=1)).isoformat(),
+        "expires_at_dt": utcnow() - timedelta(minutes=1),
+    }
+
+    assert active_predictive_alert(lane) is None
+    assert lane not in PREDICTIVE_CONGESTION_ALERTS
