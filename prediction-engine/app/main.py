@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import random
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -20,14 +21,16 @@ except Exception:  # pragma: no cover
     SYNCHRONOUS = None
 
 
-app = FastAPI(title="Synapse City OS - Prediction Engine")
-
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://backend:8000")
 PREDICTION_TOKEN = os.getenv("PREDICTION_ENGINE_TOKEN", "synapse-prediction-token")
 MODEL_UPDATE_INTERVAL_SECONDS = int(os.getenv("MODEL_UPDATE_INTERVAL_SECONDS", "300"))
 HIGH_CONGESTION_THRESHOLD = int(os.getenv("HIGH_CONGESTION_THRESHOLD", "30"))
+MAX_RECOMMENDED_GREEN_S = 180
+BASE_RECOMMENDED_GREEN_S = 120
+MIN_ADDITIONAL_GREEN_S = 15
+PEAK_HOURS = {7, 8, 9, 17, 18, 19}
 
-INFLUX_URL = os.getenv("INFLUX_URL", "http://influxdb:8086")
+INFLUXDB_URL = os.getenv("INFLUXDB_URL", os.getenv("INFLUX_URL", "http://influxdb:8086"))
 INFLUX_ORG = os.getenv("INFLUX_ORG", "synapse-city")
 INFLUX_BUCKET = os.getenv("INFLUX_BUCKET", "traffic_analytics")
 INFLUX_TOKEN = os.getenv("INFLUX_TOKEN", "synapse-influx-token")
@@ -62,7 +65,7 @@ def generate_mock_historical_data(rows: int = 288) -> List[dict]:
     records: List[dict] = []
     for i in range(rows):
         hour = (i // 12) % 24
-        is_peak = hour in {7, 8, 9, 17, 18, 19}
+        is_peak = hour in PEAK_HOURS
         base = random.randint(8, 20)
         vehicle_count = base + (random.randint(10, 24) if is_peak else random.randint(0, 8))
         bus_delay_minutes = round(random.uniform(4, 12) if is_peak else random.uniform(0, 6), 2)
@@ -82,7 +85,7 @@ def write_history_to_influx(records: List[dict]) -> bool:
     if not records or InfluxDBClient is None:
         return False
     try:
-        with InfluxDBClient(url=INFLUX_URL, token=INFLUX_TOKEN, org=INFLUX_ORG) as client:
+        with InfluxDBClient(url=INFLUXDB_URL, token=INFLUX_TOKEN, org=INFLUX_ORG) as client:
             write_api = client.write_api(write_options=SYNCHRONOUS)
             points = [
                 Point("traffic_history")
@@ -129,7 +132,11 @@ async def send_predictive_alert(request: PredictionRequest, predicted_vehicle_co
         "intersection_id": request.intersection_id,
         "predicted_vehicle_count": predicted_vehicle_count,
         "predicted_for_minutes": request.lead_minutes,
-        "recommended_max_green_s": min(180, 120 + max(15, predicted_vehicle_count - HIGH_CONGESTION_THRESHOLD)),
+        "recommended_max_green_s": min(
+            MAX_RECOMMENDED_GREEN_S,
+            BASE_RECOMMENDED_GREEN_S
+            + max(MIN_ADDITIONAL_GREEN_S, predicted_vehicle_count - HIGH_CONGESTION_THRESHOLD),
+        ),
         "expires_in_minutes": request.lead_minutes,
     }
     try:
@@ -147,14 +154,25 @@ async def send_predictive_alert(request: PredictionRequest, predicted_vehicle_co
 
 async def periodic_training_loop() -> None:
     while True:
-        train_model()
         await asyncio.sleep(MODEL_UPDATE_INTERVAL_SECONDS)
+        train_model()
 
 
-@app.on_event("startup")
-async def startup_train() -> None:
+@asynccontextmanager
+async def lifespan(_: FastAPI):
     train_model()
-    asyncio.create_task(periodic_training_loop())
+    task = asyncio.create_task(periodic_training_loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(title="Synapse City OS - Prediction Engine", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -178,7 +196,9 @@ async def forecast(payload: PredictionRequest) -> dict:
         raise HTTPException(status_code=503, detail="model not trained")
 
     hour = utcnow().hour
-    predicted_vehicle_count = int(round(MODEL.predict([_feature_row(hour, payload.current_vehicle_count, payload.bus_delay_minutes)])[0]))
+    features = _feature_row(hour, payload.current_vehicle_count, payload.bus_delay_minutes)
+    prediction = MODEL.predict([features])[0]
+    predicted_vehicle_count = int(round(prediction))
     is_high_congestion = predicted_vehicle_count >= HIGH_CONGESTION_THRESHOLD
     alert_sent = False
     if is_high_congestion:

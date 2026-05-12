@@ -76,7 +76,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   influxdb:
-    image: influxdb:2.7
+    image: influxdb:2.7.10
     container_name: synapsecity-influxdb
     ports:
       - "8086:8086"
@@ -100,7 +100,7 @@ services:
     environment:
       BACKEND_BASE_URL: http://backend:8000
       PREDICTION_ENGINE_TOKEN: synapse-prediction-token
-      INFLUX_URL: http://influxdb:8086
+      INFLUXDB_URL: http://influxdb:8086
       INFLUX_ORG: synapse-city
       INFLUX_BUCKET: traffic_analytics
       INFLUX_TOKEN: synapse-influx-token

@@ -14,6 +14,7 @@ from app.main import (
     SENSOR_STORE,
     V2P_ALERTS,
     SensorState,
+    active_predictive_alert,
     app,
     utcnow,
 )
@@ -236,3 +237,20 @@ def test_predictive_alert_preemptive_green_adjustment() -> None:
     assert body["decision"]["proactive_adjustment_applied"] is True
     assert body["decision"]["max_green_s"] == 170
     assert body["decision"]["predictive_alert"]["intersection_id"] == "INT-77"
+
+
+def test_expired_predictive_alert_is_removed() -> None:
+    lane = "North-Expired"
+    PREDICTIVE_CONGESTION_ALERTS[lane] = {
+        "lane": lane,
+        "intersection_id": "INT-99",
+        "predicted_vehicle_count": 40,
+        "predicted_for_minutes": 30,
+        "recommended_max_green_s": 160,
+        "created_at": utcnow().isoformat(),
+        "expires_at": (utcnow() - timedelta(minutes=1)).isoformat(),
+        "expires_at_dt": utcnow() - timedelta(minutes=1),
+    }
+
+    assert active_predictive_alert(lane) is None
+    assert lane not in PREDICTIVE_CONGESTION_ALERTS

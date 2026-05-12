@@ -83,7 +83,7 @@ class PredictiveCongestionAlertIngest(BaseModel):
     intersection_id: Optional[str] = None
     predicted_vehicle_count: int = Field(ge=0)
     predicted_for_minutes: int = Field(default=30, ge=15, le=30)
-    recommended_max_green_s: int = Field(default=150, ge=5, le=180)
+    recommended_max_green_s: int = Field(default=150, ge=120, le=180)
     expires_in_minutes: int = Field(default=30, ge=1, le=60)
 
 
@@ -143,7 +143,7 @@ def active_predictive_alert(lane_name: str, now: Optional[datetime] = None) -> O
     if alert is None:
         return None
     current = now or utcnow()
-    if datetime.fromisoformat(alert["expires_at"]) <= current:
+    if alert["expires_at_dt"] <= current:
         PREDICTIVE_CONGESTION_ALERTS.pop(lane_name, None)
         return None
     return alert
@@ -157,8 +157,10 @@ def evaluate_dynamic_actuation(
 ) -> dict:
     current = now or utcnow()
     max_green = MAX_GREEN_SECONDS
+    public_predictive_alert = None
     if predictive_alert is not None:
-        max_green = max(MAX_GREEN_SECONDS, predictive_alert["recommended_max_green_s"])
+        max_green = predictive_alert["recommended_max_green_s"]
+        public_predictive_alert = {k: v for k, v in predictive_alert.items() if k != "expires_at_dt"}
     estimated_green = min(max_green, max(MIN_GREEN_SECONDS, MIN_GREEN_SECONDS + lane.vehicle_count * 2))
 
     can_gap_out = current_green_elapsed_s >= MIN_GREEN_SECONDS and lane.vehicle_count == 0
@@ -175,7 +177,7 @@ def evaluate_dynamic_actuation(
         "gap_out": gap_out,
         "terminate_green_early": gap_out,
         "proactive_adjustment_applied": predictive_alert is not None,
-        "predictive_alert": predictive_alert,
+        "predictive_alert": public_predictive_alert,
     }
 
 
@@ -468,7 +470,7 @@ def ingest_predictive_traffic_alert(
     payload: PredictiveCongestionAlertIngest,
     prediction_token: Optional[str] = Header(default=None, alias="x-prediction-token"),
 ) -> dict:
-    if prediction_token is None or not secrets.compare_digest(prediction_token, PREDICTION_ENGINE_TOKEN):
+    if not prediction_token or not secrets.compare_digest(prediction_token, PREDICTION_ENGINE_TOKEN):
         raise HTTPException(status_code=401, detail="invalid prediction token")
 
     now = utcnow()
@@ -481,12 +483,14 @@ def ingest_predictive_traffic_alert(
         "recommended_max_green_s": payload.recommended_max_green_s,
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(minutes=payload.expires_in_minutes)).isoformat(),
+        "expires_at_dt": now + timedelta(minutes=payload.expires_in_minutes),
     }
+    public_alert = {k: v for k, v in PREDICTIVE_CONGESTION_ALERTS[lane_name].items() if k != "expires_at_dt"}
     return {
         "message": "predictive congestion alert ingested",
         "lane": lane_name,
         "preemptive_signal_adjustment": True,
-        "alert": PREDICTIVE_CONGESTION_ALERTS[lane_name],
+        "alert": public_alert,
     }
 
 
