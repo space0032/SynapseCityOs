@@ -1,16 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import type { Role } from '../context/AuthContext';
 import { Shield, Key, User } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const [username, setUsername] = useState('admin');
   const [role, setRole] = useState<Role>('admin');
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user) {
+      navigate('/', { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     login(username, role);
+    navigate('/', { replace: true });
   };
 
   return (
