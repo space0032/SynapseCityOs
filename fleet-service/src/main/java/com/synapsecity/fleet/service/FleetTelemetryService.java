@@ -122,6 +122,15 @@ public class FleetTelemetryService {
                 .toList();
     }
 
+    /** Returns distinct sorted route IDs currently tracked in the fleet (for commuter route picker). */
+    public List<String> getAvailableRoutes() {
+        return latestByBusId.values().stream()
+                .map(BusSnapshot::routeId)
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
     /** Applies an admin action (maintenance | active | acknowledge) to a specific bus. */
     public Map<String, String> performAction(String busId, String action) {
         if (!latestByBusId.containsKey(busId)) {

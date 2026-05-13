@@ -120,6 +120,22 @@ async def admin_fleet_action(bus_id: str, payload: dict) -> Any:
     return await fetch_json("POST", f"{FLEET_BASE_URL}/api/v1/admin/fleet/{bus_id}/action", json=payload)
 
 
+@app.get("/api/public/routes")
+async def public_routes() -> Any:
+    """Returns distinct route IDs from the fleet service for the commuter route picker."""
+    return await fetch_json("GET", f"{FLEET_BASE_URL}/api/v1/commuter/routes")
+
+
+@app.get("/api/public/aqi")
+async def public_aqi() -> Any:
+    """Returns all pollution zone data (high + normal) for the commuter AQI panel."""
+    try:
+        return await fetch_json("GET", f"{BACKEND_BASE_URL}/api/v1/pollution/all")
+    except HTTPException:
+        # Fall back to high-pollution only if /all doesn't exist
+        return await fetch_json("GET", f"{BACKEND_BASE_URL}/api/v1/pollution/high")
+
+
 @app.get("/api/public/commuter")
 async def public_commuter_status(
     route_id: str,
