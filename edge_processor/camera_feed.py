@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+import random
 from datetime import datetime, timezone
 
 import cv2
@@ -78,19 +79,25 @@ def send_heartbeat(api_base: str, sensor_id: str) -> None:
 
 def run(source: str, api_base: str, lane: str, sensor_id: str, interval: float) -> None:
     capture = cv2.VideoCapture(parse_source(source))
-    if not capture.isOpened():
-        raise RuntimeError(f"Unable to open camera source: {source}")
-
-    print(json.dumps({"status": "started", "source": source, "lane": lane, "sensor_id": sensor_id}))
+    mock_mode = not capture.isOpened()
+    
+    if mock_mode:
+        print(json.dumps({"status": "mock_mode_started", "source": source, "lane": lane, "sensor_id": sensor_id}))
+    else:
+        print(json.dumps({"status": "started", "source": source, "lane": lane, "sensor_id": sensor_id}))
 
     try:
         while True:
-            ok, frame = capture.read()
-            if not ok:
-                time.sleep(0.2)
-                continue
+            if mock_mode:
+                vehicle_count = random.randint(0, 15)
+                pedestrian_count = random.randint(0, 5)
+            else:
+                ok, frame = capture.read()
+                if not ok:
+                    time.sleep(0.2)
+                    continue
 
-            vehicle_count, pedestrian_count = mock_detect(frame)
+                vehicle_count, pedestrian_count = mock_detect(frame)
             send_payload(api_base, lane, vehicle_count, pedestrian_count, sensor_id)
             send_heartbeat(api_base, sensor_id)
 

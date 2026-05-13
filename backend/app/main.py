@@ -87,6 +87,12 @@ class PredictiveCongestionAlertIngest(BaseModel):
     expires_in_minutes: int = Field(default=30, ge=1, le=60)
 
 
+class CameraConfig(BaseModel):
+    sensor_id: str
+    source: str
+    lane: str
+
+
 @dataclass
 class LaneState:
     vehicle_count: int = 0
@@ -117,6 +123,7 @@ PREDICTION_ENGINE_TOKEN = os.getenv("PREDICTION_ENGINE_TOKEN", "synapse-predicti
 
 LANE_STORE: Dict[str, LaneState] = {}
 SENSOR_STORE: Dict[str, SensorState] = {}
+CAMERA_STORE: Dict[str, dict] = {}
 ROAD_ANOMALIES: List[dict] = []
 EMERGENCY_OVERRIDES: Dict[str, dict] = {}
 POLLUTION_ZONES: Dict[str, dict] = {}
