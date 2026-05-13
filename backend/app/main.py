@@ -507,3 +507,29 @@ def admin_live_traffic() -> dict:
             }
         )
     return {"count": len(intersections), "items": intersections}
+
+
+@app.get("/api/v1/admin/cameras")
+def admin_list_cameras() -> dict:
+    items = list(CAMERA_STORE.values())
+    return {"count": len(items), "items": items}
+
+
+@app.post("/api/v1/admin/cameras")
+def admin_add_camera(payload: CameraConfig) -> dict:
+    camera = {
+        "sensor_id": payload.sensor_id,
+        "source": payload.source,
+        "lane": payload.lane,
+        "created_at": utcnow().isoformat(),
+    }
+    CAMERA_STORE[payload.sensor_id] = camera
+    return {"message": "camera registered", "camera": camera}
+
+
+@app.delete("/api/v1/admin/cameras/{sensor_id}")
+def admin_delete_camera(sensor_id: str) -> dict:
+    if sensor_id in CAMERA_STORE:
+        del CAMERA_STORE[sensor_id]
+        return {"message": "camera deleted"}
+    raise HTTPException(status_code=404, detail="camera not found")

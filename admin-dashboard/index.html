@@ -23,6 +23,16 @@
     <h1>Synapse City OS - Admin Dashboard (Phase 4 MVP)</h1>
   </header>
   <main>
+    <section class="panel" style="grid-column: 1 / -1;">
+      <h2>Camera Management</h2>
+      <form id="add-camera-form" style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+        <input type="text" id="cam-id" placeholder="Sensor ID (e.g. cam-1)" required style="padding: 6px; background: #334155; border: 1px solid #475569; color: white; border-radius: 4px;">
+        <input type="text" id="cam-src" placeholder="Source (0 or rtsp://...)" required style="padding: 6px; background: #334155; border: 1px solid #475569; color: white; border-radius: 4px;">
+        <input type="text" id="cam-lane" placeholder="Lane (e.g. North)" required style="padding: 6px; background: #334155; border: 1px solid #475569; color: white; border-radius: 4px;">
+        <button type="submit" style="padding: 6px 12px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;">Add Camera</button>
+      </form>
+      <ul id="camera-list"></ul>
+    </section>
     <section class="panel">
       <h2>Live Traffic Status</h2>
       <ul id="traffic-list"></ul>
@@ -52,13 +62,53 @@
       });
     }
 
+    async function addCamera(e) {
+      e.preventDefault();
+      const payload = {
+        sensor_id: document.getElementById('cam-id').value,
+        source: document.getElementById('cam-src').value,
+        lane: document.getElementById('cam-lane').value
+      };
+      try {
+        await fetch(`${API_BASE}/api/admin/cameras`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        document.getElementById('add-camera-form').reset();
+        loadDashboard();
+      } catch (err) {
+        console.error('Failed to add camera', err);
+      }
+    }
+
+    async function deleteCamera(sensor_id) {
+      try {
+        await fetch(`${API_BASE}/api/admin/cameras/${sensor_id}`, { method: 'DELETE' });
+        loadDashboard();
+      } catch (err) {
+        console.error('Failed to delete camera', err);
+      }
+    }
+
+    document.getElementById('add-camera-form').addEventListener('submit', addCamera);
+
     async function loadDashboard() {
       try {
-        const [traffic, road, alerts] = await Promise.all([
+        const [traffic, road, alerts, cameras] = await Promise.all([
           fetch(`${API_BASE}/api/admin/live-traffic`).then((r) => r.json()),
           fetch(`${API_BASE}/api/admin/road-health`).then((r) => r.json()),
-          fetch(`${API_BASE}/api/admin/active-alerts`).then((r) => r.json())
+          fetch(`${API_BASE}/api/admin/active-alerts`).then((r) => r.json()),
+          fetch(`${API_BASE}/api/admin/cameras`).then((r) => r.json())
         ]);
+
+        renderList(
+          document.getElementById('camera-list'),
+          (cameras.items || []).map((item) =>
+            `<b>${item.sensor_id}</b> (Lane: ${item.lane}) - <span class="meta">${item.source}</span>
+             <button onclick="deleteCamera('${item.sensor_id}')" style="margin-left:8px; padding: 2px 6px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 10px;">Delete</button>`
+          )
+        );
 
         renderList(
           document.getElementById('traffic-list'),
@@ -84,6 +134,7 @@
           ]
         );
       } catch (err) {
+        renderList(document.getElementById('camera-list'), ['Failed to load camera data']);
         renderList(document.getElementById('traffic-list'), ['Failed to load traffic data']);
         renderList(document.getElementById('road-list'), ['Failed to load road health data']);
         renderList(document.getElementById('alerts-list'), ['Failed to load alerts']);

@@ -94,6 +94,21 @@ async def admin_active_alerts() -> dict:
     }
 
 
+@app.get("/api/admin/cameras")
+async def admin_list_cameras() -> Any:
+    return await fetch_json("GET", f"{BACKEND_BASE_URL}/api/v1/admin/cameras")
+
+
+@app.post("/api/admin/cameras")
+async def admin_add_camera(payload: dict) -> Any:
+    return await fetch_json("POST", f"{BACKEND_BASE_URL}/api/v1/admin/cameras", json=payload)
+
+
+@app.delete("/api/admin/cameras/{sensor_id}")
+async def admin_delete_camera(sensor_id: str) -> Any:
+    return await fetch_json("DELETE", f"{BACKEND_BASE_URL}/api/v1/admin/cameras/{sensor_id}")
+
+
 @app.get("/api/public/commuter")
 async def public_commuter_status(
     route_id: str,
