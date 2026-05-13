@@ -116,3 +116,36 @@ button:active:not(:disabled) {
 .leaflet-control-zoom a:hover {
   background-color: #475569 !important;
 }
+
+/* Live indicator pulse */
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%       { transform: scale(1.4); opacity: 0.6; }
+}
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  display: inline-block;
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+/* Hover lift card */
+.hover-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* Sortable table header */
+.sort-th {
+  cursor: pointer;
+  user-select: none;
+}
+.sort-th:hover {
+  color: var(--accent-cyan);
+}
+

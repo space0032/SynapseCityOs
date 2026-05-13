@@ -109,6 +109,16 @@ async def admin_delete_camera(sensor_id: str) -> Any:
     return await fetch_json("DELETE", f"{BACKEND_BASE_URL}/api/v1/admin/cameras/{sensor_id}")
 
 
+@app.get("/api/admin/fleet")
+async def admin_get_fleet() -> Any:
+    return await fetch_json("GET", f"{FLEET_BASE_URL}/api/v1/admin/fleet")
+
+
+@app.post("/api/admin/fleet/{bus_id}/action")
+async def admin_fleet_action(bus_id: str, payload: dict) -> Any:
+    return await fetch_json("POST", f"{FLEET_BASE_URL}/api/v1/admin/fleet/{bus_id}/action", json=payload)
+
+
 @app.get("/api/public/commuter")
 async def public_commuter_status(
     route_id: str,

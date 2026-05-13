@@ -4,6 +4,7 @@ import Login from './components/Login';
 import DashboardLayout from './components/DashboardLayout';
 import Dashboard from './components/Dashboard';
 import MapVisualizer from './components/MapVisualizer';
+import FleetManagement from './components/FleetManagement';
 import './index.css';
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) {
@@ -27,7 +28,7 @@ function AppRoutes() {
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/map" element={<ProtectedRoute><MapVisualizer /></ProtectedRoute>} />
       {/* Placeholders for fleet and alerts to be expanded */}
-      <Route path="/fleet" element={<ProtectedRoute allowedRoles={['fleet_manager']}><div className="glass" style={{padding: 24}}><h2>Fleet Management</h2><p>Fleet tracking coming soon.</p></div></ProtectedRoute>} />
+      <Route path="/fleet" element={<ProtectedRoute allowedRoles={['fleet_manager']}><FleetManagement /></ProtectedRoute>} />
       <Route path="/alerts" element={<ProtectedRoute allowedRoles={['city_operator']}><div className="glass" style={{padding: 24}}><h2>Active Alerts Log</h2><p>Detailed alert logs coming soon.</p></div></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
