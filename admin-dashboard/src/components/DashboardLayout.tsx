@@ -38,7 +38,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
 
         <nav style={{ flex: 1, padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <NavLink to="/" end style={({isActive}) => ({
+          <NavLink to="/dashboard" end style={({isActive}) => ({
             display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '12px', textDecoration: 'none',
             color: isActive ? 'white' : 'var(--text-secondary)', background: isActive ? 'rgba(56, 189, 248, 0.1)' : 'transparent'
           })}>

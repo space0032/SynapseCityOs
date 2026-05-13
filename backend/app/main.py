@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import secrets
 from collections import deque
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from itertools import islice
@@ -12,8 +13,16 @@ from typing import Deque, Dict, List, Optional
 from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from . import db as _db
 
-app = FastAPI(title="Synapse City OS - Phase 3")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await _db.create_tables()
+    yield
+
+
+app = FastAPI(title="Synapse City OS - Phase 3", lifespan=lifespan)
 
 
 class TrafficIngest(BaseModel):
@@ -302,7 +311,7 @@ def heartbeat_status(sensor_id: str) -> dict:
 
 
 @app.post("/ingest/road-integrity")
-def ingest_road_integrity(payload: RoadIntegrityIngest) -> dict:
+async def ingest_road_integrity(payload: RoadIntegrityIngest) -> dict:
     ts = payload.recorded_at or utcnow()
     is_anomaly = abs(payload.z_accel) >= POTHOLE_Z_THRESHOLD
     anomaly = {
@@ -315,6 +324,7 @@ def ingest_road_integrity(payload: RoadIntegrityIngest) -> dict:
     }
     if is_anomaly:
         ROAD_ANOMALIES.append(anomaly)
+        await _db.db_insert_anomaly(anomaly)
 
     return {
         "message": "road integrity data ingested",
@@ -325,8 +335,10 @@ def ingest_road_integrity(payload: RoadIntegrityIngest) -> dict:
 
 
 @app.get("/ingest/road-integrity/anomalies")
-def road_anomalies() -> dict:
-    return {"count": len(ROAD_ANOMALIES), "items": ROAD_ANOMALIES}
+async def road_anomalies() -> dict:
+    db_rows = await _db.db_list_anomalies()
+    items = db_rows if db_rows is not None else ROAD_ANOMALIES
+    return {"count": len(items), "items": items}
 
 
 @app.post("/api/v1/emergency/priority-ping")
@@ -413,16 +425,18 @@ def high_pollution_zones() -> dict:
 
 
 @app.post("/api/v1/parking/ingest")
-def ingest_parking(payload: ParkingSlotIngest) -> dict:
+async def ingest_parking(payload: ParkingSlotIngest) -> dict:
     ts = payload.recorded_at or utcnow()
-    PARKING_SLOTS[payload.slot_id] = {
+    slot = {
         "slot_id": payload.slot_id,
         "zone_id": payload.zone_id,
         "latitude": payload.latitude,
         "longitude": payload.longitude,
         "occupied": payload.occupied,
-        "recorded_at": ts.isoformat(),
+        "recorded_at": ts,
     }
+    PARKING_SLOTS[payload.slot_id] = {**slot, "recorded_at": ts.isoformat()}
+    await _db.db_upsert_parking(slot)
     return {"message": "parking slot data ingested", "slot_id": payload.slot_id, "occupied": payload.occupied}
 
 
@@ -517,13 +531,16 @@ def admin_live_traffic() -> dict:
 
 
 @app.get("/api/v1/admin/cameras")
-def admin_list_cameras() -> dict:
-    items = list(CAMERA_STORE.values())
-    return {"count": len(items), "items": items}
+async def admin_list_cameras() -> dict:
+    db_items = await _db.db_list_cameras()
+    items = db_items if db_items is not None else list(CAMERA_STORE.values())
+    # Normalize datetime objects to ISO strings
+    normalized = [{k: (v.isoformat() if hasattr(v, 'isoformat') else v) for k, v in row.items()} for row in items]
+    return {"count": len(normalized), "items": normalized}
 
 
 @app.post("/api/v1/admin/cameras")
-def admin_add_camera(payload: CameraConfig) -> dict:
+async def admin_add_camera(payload: CameraConfig) -> dict:
     camera = {
         "sensor_id": payload.sensor_id,
         "source": payload.source,
@@ -531,12 +548,13 @@ def admin_add_camera(payload: CameraConfig) -> dict:
         "created_at": utcnow().isoformat(),
     }
     CAMERA_STORE[payload.sensor_id] = camera
+    await _db.db_upsert_camera({**camera, "created_at": utcnow()})
     return {"message": "camera registered", "camera": camera}
 
 
 @app.delete("/api/v1/admin/cameras/{sensor_id}")
-def admin_delete_camera(sensor_id: str) -> dict:
+async def admin_delete_camera(sensor_id: str) -> dict:
     if sensor_id in CAMERA_STORE:
         del CAMERA_STORE[sensor_id]
-        return {"message": "camera deleted"}
-    raise HTTPException(status_code=404, detail="camera not found")
+    await _db.db_delete_camera(sensor_id)
+    return {"message": "camera deleted"}

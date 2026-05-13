@@ -1,6 +1,8 @@
 package com.synapsecity.fleet.service;
 
 import com.synapsecity.fleet.dto.*;
+import com.synapsecity.fleet.persistence.BusStatusEntity;
+import com.synapsecity.fleet.persistence.BusStatusRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
@@ -13,14 +15,28 @@ public class FleetTelemetryService {
 
     private final ScheduleMonitorService scheduleMonitorService;
     private final PriorityRequestProducer priorityRequestProducer;
+    private final BusStatusRepository busStatusRepository;
 
     private final Map<String, BusSnapshot> latestByBusId = new ConcurrentHashMap<>();
     private final Map<String, String> operationalStatus = new ConcurrentHashMap<>();
 
-    public FleetTelemetryService(ScheduleMonitorService scheduleMonitorService, PriorityRequestProducer priorityRequestProducer) {
+    public FleetTelemetryService(ScheduleMonitorService scheduleMonitorService,
+                                  PriorityRequestProducer priorityRequestProducer,
+                                  BusStatusRepository busStatusRepository) {
         this.scheduleMonitorService = scheduleMonitorService;
         this.priorityRequestProducer = priorityRequestProducer;
+        this.busStatusRepository = busStatusRepository;
+        loadPersistedStatuses();
         seedInitialFleet();
+    }
+
+    /** Restores operational statuses previously saved to the DB. */
+    private void loadPersistedStatuses() {
+        try {
+            busStatusRepository.findAll().forEach(e -> operationalStatus.put(e.getBusId(), e.getOperationalStatus()));
+        } catch (Exception ignored) {
+            // DB not available — in-memory seed will populate on first use
+        }
     }
 
     /** Seeds a realistic in-memory fleet so the admin view is non-empty on first start. */
@@ -117,7 +133,12 @@ public class FleetTelemetryService {
             case "acknowledge" -> { /* alert acknowledgement — status stays unchanged */ }
             default            -> { return Map.of("error", "unknown_action"); }
         }
-        return Map.of("bus_id", busId, "new_status", operationalStatus.get(busId));
+        String newStatus = operationalStatus.getOrDefault(busId, "active");
+        // Persist to DB
+        try {
+            busStatusRepository.save(new BusStatusEntity(busId, newStatus));
+        } catch (Exception ignored) {}
+        return Map.of("bus_id", busId, "new_status", newStatus);
     }
 
     OccupancyStatus occupancyFromPassengerCount(int passengerCount) {

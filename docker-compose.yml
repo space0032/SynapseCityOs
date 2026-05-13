@@ -9,9 +9,11 @@ services:
     environment:
       BACKEND_BASE_URL: http://backend:8000
       FLEET_BASE_URL: http://fleet-service:8080
+      PREDICTION_BASE_URL: http://prediction-engine:9100
     depends_on:
       - backend
       - fleet-service
+      - prediction-engine
 
   admin-dashboard:
     build:
@@ -36,6 +38,7 @@ services:
       POLLUTION_AQI_THRESHOLD: "150"
       POLLUTION_PM25_THRESHOLD: "55"
       POLLUTION_NO2_THRESHOLD: "100"
+      DATABASE_URL: "postgresql+asyncpg://synapse:synapse@postgres:5432/synapsecity"
     depends_on:
       - mosquitto
       - redis
@@ -49,6 +52,13 @@ services:
     container_name: synapsecity-fleet-service
     ports:
       - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/synapsecity
+      SPRING_DATASOURCE_USERNAME: synapse
+      SPRING_DATASOURCE_PASSWORD: synapse
+    depends_on:
+      - postgres
+
 
   mosquitto:
     image: eclipse-mosquitto:2
@@ -116,15 +126,15 @@ services:
       dockerfile: Dockerfile
     container_name: synapsecity-edge-processor-north
     environment:
-      API_BASE: http://api-gateway:9000
+      API_BASE: http://backend:8000
     command: >
       python camera_feed.py
-        --source "rtsp://path.to.your.stream/north"
+        --source "rtsp://invalid"
         --lane "North"
         --sensor-id "edge-camera-north"
         --interval 2
     depends_on:
-      - api-gateway
+      - backend
 
   edge-processor-south:
     build:
@@ -132,15 +142,15 @@ services:
       dockerfile: Dockerfile
     container_name: synapsecity-edge-processor-south
     environment:
-      API_BASE: http://api-gateway:9000
+      API_BASE: http://backend:8000
     command: >
       python camera_feed.py
-        --source "rtsp://path.to.your.stream/south"
+        --source "rtsp://invalid"
         --lane "South"
         --sensor-id "edge-camera-south"
         --interval 2
     depends_on:
-      - api-gateway
+      - backend
 
 volumes:
   postgres_data:

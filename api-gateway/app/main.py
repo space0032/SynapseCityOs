@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://backend:8000")
 FLEET_BASE_URL = os.getenv("FLEET_BASE_URL", "http://fleet-service:8080")
+PREDICTION_BASE_URL = os.getenv("PREDICTION_BASE_URL", "http://prediction-engine:9100")
 REQUEST_TIMEOUT_SECONDS = 10.0
 
 app = FastAPI(title="Synapse City OS - API Gateway")
@@ -140,3 +141,19 @@ async def public_commuter_status(
         "smart_parking": parking,
         "air_quality": air_quality,
     }
+
+
+@app.post("/api/prediction/forecast")
+async def prediction_forecast(payload: dict) -> Any:
+    return await fetch_json("POST", f"{PREDICTION_BASE_URL}/api/v1/prediction/forecast", json=payload)
+
+
+@app.post("/api/prediction/train")
+async def prediction_train(payload: dict = {}) -> Any:
+    return await fetch_json("POST", f"{PREDICTION_BASE_URL}/api/v1/prediction/train", json=payload)
+
+
+@app.get("/api/prediction/health")
+async def prediction_health() -> Any:
+    return await fetch_json("GET", f"{PREDICTION_BASE_URL}/health")
+
