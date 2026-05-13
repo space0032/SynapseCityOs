@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import type { Role } from '../context/AuthContext';
-import { Shield, Key, User } from 'lucide-react';
+import { Key, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import logo from '../assets/logo.png';
 
 export default function Login() {
   const { login, user } = useAuth();
@@ -25,7 +26,7 @@ export default function Login() {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', width: '100%', position: 'relative', zIndex: 10 }}>
       <div className="glass" style={{ padding: '40px', width: '100%', maxWidth: '400px', textAlign: 'center' }}>
-        <Shield size={48} color="var(--accent-cyan)" style={{ margin: '0 auto 24px' }} />
+        <img src={logo} alt="SynapseCity OS Logo" style={{ margin: '0 auto 24px', height: '64px', width: 'auto', objectFit: 'contain', display: 'block' }} />
         <h2 style={{ margin: '0 0 8px', fontSize: '24px' }}>SynapseCity Access</h2>
         <p style={{ margin: '0 0 32px', color: 'var(--text-secondary)', fontSize: '14px' }}>Sign in to continue to the Admin Dashboard.</p>
         

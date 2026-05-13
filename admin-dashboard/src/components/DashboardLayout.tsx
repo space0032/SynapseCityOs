@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Map as MapIcon, Truck, LogOut, ShieldAlert } from 'lucide-react';
+import logo from '../assets/logo.png';
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, logout, hasRole } = useAuth();
@@ -21,7 +22,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <aside className="glass" style={{ width: 'var(--sidebar-width)', margin: '16px', display: 'flex', flexDirection: 'column', zIndex: 10 }}>
         <div style={{ padding: '24px', borderBottom: '1px solid var(--panel-border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ background: 'var(--accent-cyan)', width: '32px', height: '32px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#0f172a' }}>SC</div>
+            <img src={logo} alt="SynapseCity OS Logo" style={{ width: '50px', height: '50px', borderRadius: '8px', objectFit: 'contain' }} />
             <h1 style={{ fontSize: '18px', margin: 0, fontWeight: 700 }}>Synapse<span style={{ color: 'var(--accent-cyan)' }}>City</span> OS</h1>
           </div>
         </div>
