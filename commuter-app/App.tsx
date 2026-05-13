@@ -192,9 +192,11 @@ export default function App() {
           <Text style={styles.logoIcon}>⚡</Text>
           <Text style={styles.logoText}>Synapse<Text style={styles.logoAccent}>City</Text></Text>
         </View>
-        <View style={styles.statusBadge}>
-          <View style={styles.pulse} />
-          <Text style={styles.statusText}>Gateway Online</Text>
+        <View style={[styles.statusBadge, error ? styles.statusBadgeOffline : null]}>
+          <View style={[styles.pulse, error ? styles.pulseOffline : null]} />
+          <Text style={[styles.statusText, error ? styles.statusTextOffline : null]}>
+            {error ? "Gateway Offline" : "Gateway Online"}
+          </Text>
         </View>
       </View>
 
@@ -409,8 +411,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(16, 185, 129, 0.2)',
     gap: 8,
   },
+  statusBadgeOffline: { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)' },
   pulse: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#10b981' },
+  pulseOffline: { backgroundColor: '#ef4444' },
   statusText: { color: '#10b981', fontSize: 12, fontWeight: '600' },
+  statusTextOffline: { color: '#ef4444' },
   scrollContent: { padding: 24, paddingBottom: 60, flexGrow: 1 },
   mainLayout: { flexDirection: 'column', gap: 24 },
   mainLayoutDesktop: { flexDirection: 'row' },
