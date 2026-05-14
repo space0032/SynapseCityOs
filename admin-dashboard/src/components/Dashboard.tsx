@@ -11,19 +11,18 @@ export default function Dashboard() {
 
   const loadData = async () => {
     try {
-      const [cameras, traffic, alerts] = await Promise.all([
+      const [cameras, alerts] = await Promise.all([
         fetch(`${API_BASE_URL}/api/admin/cameras`).then(res => res.json()),
-        fetch(`${API_BASE_URL}/api/admin/live-traffic`).then(res => res.json()),
         fetch(`${API_BASE_URL}/api/admin/active-alerts`).then(res => res.json()),
       ]);
-      setData({
+      setData(prev => ({
+        ...prev,
         cameras: cameras.items || [],
-        traffic: traffic.items || [],
         alerts: {
           emergency_overrides: alerts.emergency_overrides?.items || [],
           high_pollution_zones: alerts.high_pollution_zones?.items || []
         }
-      });
+      }));
     } catch (e) {
       console.error(e);
     }
@@ -32,7 +31,24 @@ export default function Dashboard() {
   useEffect(() => {
     loadData();
     const int = setInterval(loadData, 10000);
-    return () => clearInterval(int);
+
+    const wsUrl = (import.meta.env.VITE_BACKEND_WS_URL ?? "ws://localhost:8000") + "/api/v1/admin/live-traffic/ws";
+    const ws = new WebSocket(wsUrl);
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'live_traffic' && msg.data) {
+          setData(prev => ({ ...prev, traffic: msg.data.items || [] }));
+        }
+      } catch (e) {
+        console.error("WebSocket message error", e);
+      }
+    };
+
+    return () => {
+      clearInterval(int);
+      ws.close();
+    };
   }, []);
 
   const handleAddCam = async (e: React.FormEvent) => {
@@ -97,7 +113,7 @@ export default function Dashboard() {
               <div key={t.intersection_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
                 <span style={{ fontWeight: 'bold' }}>{t.intersection_id}</span>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{t.vehicle_count} vehicles</span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{t.vehicle_count} vehicles, {t.pedestrian_count ?? 0} peds</span>
                   <span style={{ fontSize: '11px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '4px', background: t.signal_state === 'GREEN' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: t.signal_state === 'GREEN' ? 'var(--accent-green)' : 'var(--accent-red)' }}>{t.signal_state}</span>
                 </div>
               </div>

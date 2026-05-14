@@ -60,41 +60,53 @@ def send_payload(api_base: str, lane: str, vehicle_count: int, pedestrian_count:
         "pedestrian_count": pedestrian_count,
         "sensor_id": sensor_id,
     }
-    try:
-        requests.post(url, json=payload, timeout=2).raise_for_status()
-    except requests.RequestException as exc:
-        print(
-            json.dumps(
-                {
-                    "level": "error",
-                    "event": "traffic_post_failed",
-                    "url": url,
-                    "lane": lane,
-                    "sensor_id": sensor_id,
-                    "status_code": status_code_from_exception(exc),
-                    "error": str(exc),
-                }
-            )
-        )
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            requests.post(url, json=payload, timeout=2).raise_for_status()
+            return
+        except requests.RequestException as exc:
+            if attempt == max_retries - 1:
+                print(
+                    json.dumps(
+                        {
+                            "level": "error",
+                            "event": "traffic_post_failed",
+                            "url": url,
+                            "lane": lane,
+                            "sensor_id": sensor_id,
+                            "status_code": status_code_from_exception(exc),
+                            "error": str(exc),
+                        }
+                    )
+                )
+            else:
+                time.sleep(2 ** attempt)
 
 
 def send_heartbeat(api_base: str, sensor_id: str) -> None:
     url = f"{api_base}/heartbeat/{sensor_id}"
-    try:
-        requests.post(url, timeout=2).raise_for_status()
-    except requests.RequestException as exc:
-        print(
-            json.dumps(
-                {
-                    "level": "error",
-                    "event": "heartbeat_post_failed",
-                    "url": url,
-                    "sensor_id": sensor_id,
-                    "status_code": status_code_from_exception(exc),
-                    "error": str(exc),
-                }
-            )
-        )
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            requests.post(url, timeout=2).raise_for_status()
+            return
+        except requests.RequestException as exc:
+            if attempt == max_retries - 1:
+                print(
+                    json.dumps(
+                        {
+                            "level": "error",
+                            "event": "heartbeat_post_failed",
+                            "url": url,
+                            "sensor_id": sensor_id,
+                            "status_code": status_code_from_exception(exc),
+                            "error": str(exc),
+                        }
+                    )
+                )
+            else:
+                time.sleep(2 ** attempt)
 
 
 def run(source: str, api_base: str, lane: str, sensor_id: str, interval: float) -> None:

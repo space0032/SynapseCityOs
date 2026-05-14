@@ -10,8 +10,9 @@ from itertools import islice
 from math import atan2, cos, radians, sin, sqrt
 from typing import Deque, Dict, List, Optional
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
+import asyncio
 
 from . import db as _db
 
@@ -23,6 +24,27 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Synapse City OS - Phase 3", lifespan=lifespan)
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast_json(self, data: dict):
+        for connection in list(self.active_connections):
+            try:
+                await connection.send_json(data)
+            except Exception:
+                self.disconnect(connection)
+
+ws_manager = ConnectionManager()
 
 
 class TrafficIngest(BaseModel):
@@ -230,7 +252,7 @@ def health() -> dict:
 
 
 @app.post("/ingest/traffic")
-def ingest_traffic(payload: TrafficIngest) -> dict:
+async def ingest_traffic(payload: TrafficIngest) -> dict:
     now = utcnow()
     lane = LANE_STORE.setdefault(payload.lane, LaneState())
     lane.vehicle_count = payload.vehicle_count
@@ -238,6 +260,8 @@ def ingest_traffic(payload: TrafficIngest) -> dict:
 
     if payload.vehicle_count > 0:
         lane.last_nonzero_vehicle_seen_at = now
+
+    await ws_manager.broadcast_json({"type": "live_traffic", "data": admin_live_traffic()})
 
     return {
         "message": "traffic data ingested",
@@ -532,9 +556,21 @@ def admin_live_traffic() -> dict:
                 "intersection_id": lane_name,
                 "signal_state": "GREEN" if lane.vehicle_count > 0 else "RED",
                 "vehicle_count": lane.vehicle_count,
+                "pedestrian_count": lane.pedestrian_count,
             }
         )
     return {"count": len(intersections), "items": intersections}
+
+@app.websocket("/api/v1/admin/live-traffic/ws")
+async def websocket_live_traffic(websocket: WebSocket):
+    await ws_manager.connect(websocket)
+    try:
+        await websocket.send_json({"type": "live_traffic", "data": admin_live_traffic()})
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
+
 
 
 @app.get("/api/v1/admin/cameras")
