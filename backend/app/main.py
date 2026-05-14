@@ -393,14 +393,14 @@ def list_traffic_overrides() -> dict:
 
 
 @app.post("/api/v1/pollution/ingest")
-def ingest_pollution(payload: PollutionIngest) -> dict:
+async def ingest_pollution(payload: PollutionIngest) -> dict:
     now = payload.recorded_at or utcnow()
     is_high = (
         payload.aqi >= POLLUTION_AQI_THRESHOLD
         or payload.pm25 >= POLLUTION_PM25_THRESHOLD
         or payload.no2 >= POLLUTION_NO2_THRESHOLD
     )
-    POLLUTION_ZONES[payload.zone_id] = {
+    zone_data = {
         "zone_id": payload.zone_id,
         "intersection_id": payload.intersection_id,
         "aqi": payload.aqi,
@@ -409,6 +409,8 @@ def ingest_pollution(payload: PollutionIngest) -> dict:
         "recorded_at": now.isoformat(),
         "high_pollution": is_high,
     }
+    await _db.db_upsert_pollution_zone(zone_data)
+    POLLUTION_ZONES[payload.zone_id] = zone_data
 
     return {
         "message": "pollution data ingested",
@@ -419,8 +421,9 @@ def ingest_pollution(payload: PollutionIngest) -> dict:
 
 
 @app.get("/api/v1/pollution/high")
-def high_pollution_zones() -> dict:
-    items = [item for item in POLLUTION_ZONES.values() if item["high_pollution"]]
+async def high_pollution_zones() -> dict:
+    db_items = await _db.db_list_high_pollution_zones()
+    items = db_items if db_items is not None else [item for item in POLLUTION_ZONES.values() if item["high_pollution"]]
     return {"count": len(items), "items": items}
 
 
@@ -458,7 +461,7 @@ def nearest_available_parking(
 
 
 @app.post("/api/v1/v2p/alert")
-def ingest_v2p_alert(payload: V2PAlertIngest) -> dict:
+async def ingest_v2p_alert(payload: V2PAlertIngest) -> dict:
     ts = payload.detected_at or utcnow()
     alert = {
         "event_id": payload.event_id,
@@ -470,6 +473,7 @@ def ingest_v2p_alert(payload: V2PAlertIngest) -> dict:
         "severity": payload.severity,
         "detected_at": ts.isoformat(),
     }
+    await _db.db_insert_v2p_alert(alert)
     V2P_ALERTS.append(alert)
 
     return {
@@ -480,7 +484,10 @@ def ingest_v2p_alert(payload: V2PAlertIngest) -> dict:
 
 
 @app.get("/api/v1/v2p/alerts")
-def list_v2p_alerts(limit: int = Query(default=20, ge=1, le=100)) -> dict:
+async def list_v2p_alerts(limit: int = Query(default=20, ge=1, le=100)) -> dict:
+    db_items = await _db.db_list_v2p_alerts(limit)
+    if db_items is not None:
+        return {"count": len(db_items), "items": db_items}
     items = list(islice(reversed(V2P_ALERTS), limit))
     items.reverse()
     return {"count": len(items), "items": items}

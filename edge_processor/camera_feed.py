@@ -6,6 +6,7 @@ import time
 import random
 from datetime import datetime, timezone
 
+import os
 import cv2
 import requests
 import numpy as np
@@ -16,7 +17,7 @@ hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=50, detectShadows=True)
 
 
-API_BASE_DEFAULT = "http://localhost:8000"
+API_BASE_DEFAULT = os.getenv("API_BASE", "http://localhost:8000")
 
 
 def parse_source(source: str):

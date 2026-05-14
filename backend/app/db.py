@@ -223,3 +223,145 @@ async def db_list_anomalies() -> Optional[List[Dict[str, Any]]]:
             ]
     except Exception:
         return None
+
+
+# ── Lane States ───────────────────────────────────────────────────────────────
+
+async def db_upsert_lane_state(lane: str, vehicle_count: int, pedestrian_count: int, last_seen: Optional[datetime] = None) -> bool:
+    if _engine is None or 'lane_states_table' not in globals() or lane_states_table is None:
+        return False
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    try:
+        async with _engine.begin() as conn:
+            stmt = pg_insert(lane_states_table).values(
+                lane=lane, vehicle_count=vehicle_count, pedestrian_count=pedestrian_count,
+                last_nonzero_vehicle_seen_at=last_seen
+            ).on_conflict_do_update(
+                index_elements=["lane"],
+                set_={"vehicle_count": vehicle_count, "pedestrian_count": pedestrian_count, "last_nonzero_vehicle_seen_at": last_seen}
+            )
+            await conn.execute(stmt)
+        return True
+    except Exception:
+        return False
+
+async def db_list_lane_states() -> Optional[List[Dict[str, Any]]]:
+    if _engine is None or 'lane_states_table' not in globals() or lane_states_table is None:
+        return None
+    from sqlalchemy import select
+    try:
+        async with _engine.connect() as conn:
+            rows = await conn.execute(select(lane_states_table))
+            return [dict(r._mapping) for r in rows]
+    except Exception:
+        return None
+
+
+# ── Emergency Overrides ───────────────────────────────────────────────────────
+
+async def db_upsert_emergency_override(override: Dict[str, Any]) -> bool:
+    if _engine is None or 'emergency_overrides_table' not in globals() or emergency_overrides_table is None:
+        return False
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    try:
+        async with _engine.begin() as conn:
+            stmt = pg_insert(emergency_overrides_table).values(
+                intersection_id=override["intersection_id"], vehicle_id=override["vehicle_id"],
+                vehicle_type=override["vehicle_type"], mode=override["mode"],
+                cross_traffic_signal=override["cross_traffic_signal"],
+                emergency_path_signal=override["emergency_path_signal"],
+                created_at=datetime.fromisoformat(override["created_at"]) if isinstance(override["created_at"], str) else override["created_at"],
+                expires_at=datetime.fromisoformat(override["expires_at"]) if isinstance(override["expires_at"], str) else override["expires_at"]
+            ).on_conflict_do_update(
+                index_elements=["intersection_id"],
+                set_={"expires_at": datetime.fromisoformat(override["expires_at"]) if isinstance(override["expires_at"], str) else override["expires_at"]}
+            )
+            await conn.execute(stmt)
+        return True
+    except Exception:
+        return False
+
+async def db_list_emergency_overrides() -> Optional[List[Dict[str, Any]]]:
+    if _engine is None or 'emergency_overrides_table' not in globals() or emergency_overrides_table is None:
+        return None
+    from sqlalchemy import select
+    try:
+        async with _engine.connect() as conn:
+            rows = await conn.execute(select(emergency_overrides_table))
+            return [{k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in dict(r._mapping).items()} for r in rows]
+    except Exception:
+        return None
+
+async def db_delete_emergency_override(intersection_id: str) -> bool:
+    if _engine is None or 'emergency_overrides_table' not in globals() or emergency_overrides_table is None:
+        return False
+    from sqlalchemy import delete
+    try:
+        async with _engine.begin() as conn:
+            await conn.execute(delete(emergency_overrides_table).where(emergency_overrides_table.c.intersection_id == intersection_id))
+        return True
+    except Exception:
+        return False
+
+
+# ── Pollution Zones ───────────────────────────────────────────────────────────
+
+async def db_upsert_pollution_zone(zone: Dict[str, Any]) -> bool:
+    if _engine is None or 'pollution_zones_table' not in globals() or pollution_zones_table is None:
+        return False
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    try:
+        async with _engine.begin() as conn:
+            stmt = pg_insert(pollution_zones_table).values(
+                zone_id=zone["zone_id"], intersection_id=zone.get("intersection_id"),
+                aqi=zone["aqi"], pm25=zone["pm25"], no2=zone["no2"],
+                recorded_at=datetime.fromisoformat(zone["recorded_at"]) if isinstance(zone["recorded_at"], str) else zone["recorded_at"],
+                high_pollution=zone["high_pollution"]
+            ).on_conflict_do_update(
+                index_elements=["zone_id"],
+                set_={"aqi": zone["aqi"], "pm25": zone["pm25"], "no2": zone["no2"], "recorded_at": datetime.fromisoformat(zone["recorded_at"]) if isinstance(zone["recorded_at"], str) else zone["recorded_at"], "high_pollution": zone["high_pollution"]}
+            )
+            await conn.execute(stmt)
+        return True
+    except Exception:
+        return False
+
+async def db_list_high_pollution_zones() -> Optional[List[Dict[str, Any]]]:
+    if _engine is None or 'pollution_zones_table' not in globals() or pollution_zones_table is None:
+        return None
+    from sqlalchemy import select
+    try:
+        async with _engine.connect() as conn:
+            rows = await conn.execute(select(pollution_zones_table).where(pollution_zones_table.c.high_pollution == True))
+            return [{k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in dict(r._mapping).items()} for r in rows]
+    except Exception:
+        return None
+
+
+# ── V2P Alerts ────────────────────────────────────────────────────────────────
+
+async def db_insert_v2p_alert(alert: Dict[str, Any]) -> bool:
+    if _engine is None or 'v2p_alerts_table' not in globals() or v2p_alerts_table is None:
+        return False
+    try:
+        async with _engine.begin() as conn:
+            await conn.execute(v2p_alerts_table.insert().values(
+                event_id=alert["event_id"], intersection_id=alert["intersection_id"],
+                camera_id=alert["camera_id"], latitude=alert["latitude"],
+                longitude=alert["longitude"], danger_type=alert["danger_type"],
+                severity=alert["severity"], detected_at=datetime.fromisoformat(alert["detected_at"]) if isinstance(alert["detected_at"], str) else alert["detected_at"]
+            ))
+        return True
+    except Exception:
+        return False
+
+async def db_list_v2p_alerts(limit: int = 20) -> Optional[List[Dict[str, Any]]]:
+    if _engine is None or 'v2p_alerts_table' not in globals() or v2p_alerts_table is None:
+        return None
+    from sqlalchemy import select
+    try:
+        async with _engine.connect() as conn:
+            rows = await conn.execute(select(v2p_alerts_table).order_by(v2p_alerts_table.c.detected_at.desc()).limit(limit))
+            return [{k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in dict(r._mapping).items()} for r in rows]
+    except Exception:
+        return None
