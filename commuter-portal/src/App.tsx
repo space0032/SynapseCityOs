@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback, Component, ErrorInfo, ReactNode } from 'react';
 import { Bus, Car, Wind, AlertTriangle, RefreshCw, MapPin, Clock, Bell, X, Wifi, WifiOff, ChevronDown } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
 import L from 'leaflet';
@@ -139,8 +139,37 @@ function AlertBanner({ buses, pollution }: { buses: BusItem[]; pollution: Pollut
   );
 }
 
+// ── Error Boundary ────────────────────────────────────────────────────────────────
+class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null}> {
+  constructor(props: {children: ReactNode}) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-primary)', fontFamily: 'sans-serif' }}>
+          <AlertTriangle size={64} color="var(--accent-red)" style={{ marginBottom: '16px' }} />
+          <h2 style={{ marginBottom: '10px' }}>Something went wrong.</h2>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>{this.state.error?.message || "An unexpected error occurred in the Commuter Portal."}</p>
+          <button onClick={() => window.location.reload()} style={{ padding: '12px 24px', background: 'var(--accent-cyan)', color: '#0f172a', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}>
+            Reload Page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── Main Component ──────────────────────────────────────────────────────────────
-export default function App() {
+function CommuterApp() {
   const [routeId, setRouteId]         = useState('RTE-A');
   const [availableRoutes, setAvailableRoutes] = useState<string[]>([]);
   const [latitude, setLatitude]       = useState('22.3000');
@@ -148,6 +177,7 @@ export default function App() {
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const [data, setData]               = useState<CommuterResponse | null>(null);
+  const [refreshDelay, setRefreshDelay] = useState(AUTO_REFRESH_INTERVAL);
   const [countdown, setCountdown]     = useState(AUTO_REFRESH_INTERVAL);
   const countdownRef                  = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -173,13 +203,17 @@ export default function App() {
       const res = await fetch(`${API_BASE_URL}/api/public/commuter?${q}`);
       if (!res.ok) throw new Error(`Gateway error (${res.status})`);
       setData(await res.json());
+      setRefreshDelay(AUTO_REFRESH_INTERVAL);
+      setCountdown(AUTO_REFRESH_INTERVAL);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
+      const newDelay = Math.min(Math.round(refreshDelay * 1.5), 300); // Backoff up to 5 minutes
+      setRefreshDelay(newDelay);
+      setCountdown(newDelay);
     } finally {
       setLoading(false);
-      setCountdown(AUTO_REFRESH_INTERVAL);
     }
-  }, [routeId, latitude, longitude]);
+  }, [routeId, latitude, longitude, refreshDelay]);
 
   // Initial load
   useEffect(() => { void loadData(); }, []);
@@ -188,7 +222,7 @@ export default function App() {
   useEffect(() => {
     countdownRef.current = setInterval(() => {
       setCountdown(c => {
-        if (c <= 1) { void loadData(); return AUTO_REFRESH_INTERVAL; }
+        if (c <= 1) { void loadData(); return refreshDelay; }
         return c - 1;
       });
     }, 1000);
@@ -462,5 +496,13 @@ export default function App() {
         </div>
       </main>
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <CommuterApp />
+    </ErrorBoundary>
   );
 }

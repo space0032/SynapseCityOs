@@ -98,14 +98,42 @@ def write_history_to_influx(records: List[dict]) -> bool:
             ]
             write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=points)
         return True
+        return True
     except Exception:
         return False
+
+
+def fetch_historical_data_from_influx() -> List[dict]:
+    if InfluxDBClient is None:
+        return []
+    try:
+        with InfluxDBClient(url=INFLUXDB_URL, token=INFLUX_TOKEN, org=INFLUX_ORG) as client:
+            query_api = client.query_api()
+            query = f'from(bucket:"{INFLUX_BUCKET}") |> range(start: -7d) |> filter(fn: (r) => r._measurement == "traffic_history") |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")'
+            tables = query_api.query(query)
+            records = []
+            for table in tables:
+                for record in table.records:
+                    records.append({
+                        "hour": record.values.get("hour", 0),
+                        "vehicle_count": record.values.get("vehicle_count", 0),
+                        "bus_delay_minutes": record.values.get("bus_delay_minutes", 0),
+                        "future_vehicle_count": record.values.get("future_vehicle_count", 0),
+                    })
+            return records
+    except Exception:
+        return []
 
 
 def train_model(rows: int = 288) -> dict:
     global MODEL, MODEL_TRAINED_AT, MODEL_VERSION, LAST_TRAINING_ROWS
 
-    samples = generate_mock_historical_data(rows)
+    samples = fetch_historical_data_from_influx()
+    influx_written = False
+    if not samples:
+        samples = generate_mock_historical_data(rows)
+        influx_written = write_history_to_influx(samples)
+        
     features = [_feature_row(s["hour"], s["vehicle_count"], s["bus_delay_minutes"]) for s in samples]
     targets = [s["future_vehicle_count"] for s in samples]
 
@@ -114,9 +142,8 @@ def train_model(rows: int = 288) -> dict:
 
     MODEL = model
     MODEL_VERSION += 1
-    LAST_TRAINING_ROWS = rows
+    LAST_TRAINING_ROWS = len(samples)
     MODEL_TRAINED_AT = utcnow().isoformat()
-    influx_written = write_history_to_influx(samples)
 
     return {
         "model_version": MODEL_VERSION,

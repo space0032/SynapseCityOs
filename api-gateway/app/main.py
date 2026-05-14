@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
+from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+import redis.asyncio as redis
+from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi_limiter import FastAPILimiter
+from fastapi_limiter.depends import RateLimiter
 
 
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://backend:8000")
@@ -13,7 +18,22 @@ FLEET_BASE_URL = os.getenv("FLEET_BASE_URL", "http://fleet-service:8080")
 PREDICTION_BASE_URL = os.getenv("PREDICTION_BASE_URL", "http://prediction-engine:9100")
 REQUEST_TIMEOUT_SECONDS = 10.0
 
-app = FastAPI(title="Synapse City OS - API Gateway")
+CIRCUIT_BREAKER_FAILS = {}
+CIRCUIT_OPEN_UNTIL = {}
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
+    try:
+        redis_connection = redis.from_url(redis_url, encoding="utf-8", decode_responses=True)
+        await FastAPILimiter.init(redis_connection)
+        yield
+        await redis_connection.close()
+    except Exception as e:
+        print(f"Redis not available for rate limiting: {e}")
+        yield
+
+app = FastAPI(title="Synapse City OS - API Gateway", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,10 +44,17 @@ app.add_middleware(
 
 
 async def fetch_json(method: str, url: str, **kwargs: Any) -> Any:
+    domain = url.split("/")[2] if "//" in url else "unknown"
+    now = time.time()
+    
+    if CIRCUIT_OPEN_UNTIL.get(domain, 0) > now:
+        raise HTTPException(status_code=503, detail={"message": f"Circuit breaker open for {domain}"})
+
     try:
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
             response = await client.request(method, url, **kwargs)
             response.raise_for_status()
+            CIRCUIT_BREAKER_FAILS[domain] = 0
             return response.json()
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
@@ -39,6 +66,10 @@ async def fetch_json(method: str, url: str, **kwargs: Any) -> Any:
             },
         ) from exc
     except httpx.HTTPError as exc:
+        fails = CIRCUIT_BREAKER_FAILS.get(domain, 0) + 1
+        CIRCUIT_BREAKER_FAILS[domain] = fails
+        if fails >= 3:
+            CIRCUIT_OPEN_UNTIL[domain] = now + 30 # Open for 30s
         raise HTTPException(status_code=502, detail={"message": "upstream service unavailable", "error": str(exc)}) from exc
 
 
@@ -120,13 +151,13 @@ async def admin_fleet_action(bus_id: str, payload: dict) -> Any:
     return await fetch_json("POST", f"{FLEET_BASE_URL}/api/v1/admin/fleet/{bus_id}/action", json=payload)
 
 
-@app.get("/api/public/routes")
+@app.get("/api/public/routes", dependencies=[Depends(RateLimiter(times=30, seconds=60))])
 async def public_routes() -> Any:
     """Returns distinct route IDs from the fleet service for the commuter route picker."""
     return await fetch_json("GET", f"{FLEET_BASE_URL}/api/v1/commuter/routes")
 
 
-@app.get("/api/public/aqi")
+@app.get("/api/public/aqi", dependencies=[Depends(RateLimiter(times=30, seconds=60))])
 async def public_aqi() -> Any:
     """Returns all pollution zone data (high + normal) for the commuter AQI panel."""
     try:
@@ -136,7 +167,7 @@ async def public_aqi() -> Any:
         return await fetch_json("GET", f"{BACKEND_BASE_URL}/api/v1/pollution/high")
 
 
-@app.get("/api/public/commuter")
+@app.get("/api/public/commuter", dependencies=[Depends(RateLimiter(times=20, seconds=60))])
 async def public_commuter_status(
     route_id: str,
     latitude: float,
