@@ -8,6 +8,12 @@ from datetime import datetime, timezone
 
 import cv2
 import requests
+import numpy as np
+
+# Initialize lightweight CV models
+hog = cv2.HOGDescriptor()
+hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=50, detectShadows=True)
 
 
 API_BASE_DEFAULT = "http://localhost:8000"
@@ -20,10 +26,23 @@ def parse_source(source: str):
 
 
 def mock_detect(frame) -> tuple[int, int]:
+    # Pedestrian detection using HOG
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    avg = int(gray.mean())
-    vehicle_count = max(0, min(15, (avg // 16) % 16))
-    pedestrian_count = max(0, min(5, (avg // 32) % 6))
+    pedestrians, _ = hog.detectMultiScale(gray, winStride=(8, 8), padding=(4, 4), scale=1.05)
+    pedestrian_count = len(pedestrians)
+
+    # Vehicle counting using Background Subtraction
+    fg_mask = bg_subtractor.apply(frame)
+    # Filter out noise
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
+    
+    contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    vehicle_count = 0
+    for contour in contours:
+        if cv2.contourArea(contour) > 500: # Adjust size threshold as needed
+            vehicle_count += 1
+
     return vehicle_count, pedestrian_count
 
 

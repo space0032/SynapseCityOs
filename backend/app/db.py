@@ -58,6 +58,49 @@ try:
         Column("is_anomaly", Boolean, nullable=False, default=True),
     )
 
+    lane_states_table = Table(
+        "lane_states", _metadata,
+        Column("lane", String, primary_key=True),
+        Column("vehicle_count", Integer, nullable=False, default=0),
+        Column("pedestrian_count", Integer, nullable=False, default=0),
+        Column("last_nonzero_vehicle_seen_at", DateTime(timezone=True), nullable=True),
+    )
+
+    emergency_overrides_table = Table(
+        "emergency_overrides", _metadata,
+        Column("intersection_id", String, primary_key=True),
+        Column("vehicle_id", String, nullable=False),
+        Column("vehicle_type", String, nullable=False),
+        Column("mode", String, nullable=False),
+        Column("cross_traffic_signal", String, nullable=False),
+        Column("emergency_path_signal", String, nullable=False),
+        Column("created_at", DateTime(timezone=True), nullable=False),
+        Column("expires_at", DateTime(timezone=True), nullable=False),
+    )
+
+    pollution_zones_table = Table(
+        "pollution_zones", _metadata,
+        Column("zone_id", String, primary_key=True),
+        Column("intersection_id", String, nullable=True),
+        Column("aqi", Float, nullable=False),
+        Column("pm25", Float, nullable=False),
+        Column("no2", Float, nullable=False),
+        Column("recorded_at", DateTime(timezone=True), nullable=False),
+        Column("high_pollution", Boolean, nullable=False, default=False),
+    )
+
+    v2p_alerts_table = Table(
+        "v2p_alerts", _metadata,
+        Column("event_id", String, primary_key=True),
+        Column("intersection_id", String, nullable=False),
+        Column("camera_id", String, nullable=False),
+        Column("latitude", Float, nullable=False),
+        Column("longitude", Float, nullable=False),
+        Column("danger_type", String, nullable=False),
+        Column("severity", String, nullable=False),
+        Column("detected_at", DateTime(timezone=True), nullable=False),
+    )
+
 except Exception:  # pragma: no cover
     pass  # DB unavailable — callers fall back to in-memory
 
