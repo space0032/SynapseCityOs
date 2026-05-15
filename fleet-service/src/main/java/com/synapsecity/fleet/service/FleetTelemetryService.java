@@ -5,10 +5,14 @@ import com.synapsecity.fleet.persistence.BusStatusEntity;
 import com.synapsecity.fleet.persistence.BusStatusRepository;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.http.ResponseEntity;
 
 @Service
 public class FleetTelemetryService {
@@ -16,16 +20,22 @@ public class FleetTelemetryService {
     private final ScheduleMonitorService scheduleMonitorService;
     private final PriorityRequestProducer priorityRequestProducer;
     private final BusStatusRepository busStatusRepository;
+    private final RestTemplate restTemplate;
+    private final String predictionBaseUrl;
 
     private final Map<String, BusSnapshot> latestByBusId = new ConcurrentHashMap<>();
     private final Map<String, String> operationalStatus = new ConcurrentHashMap<>();
 
     public FleetTelemetryService(ScheduleMonitorService scheduleMonitorService,
                                   PriorityRequestProducer priorityRequestProducer,
-                                  BusStatusRepository busStatusRepository) {
+                                  BusStatusRepository busStatusRepository,
+                                  RestTemplate restTemplate,
+                                  @Value("${PREDICTION_BASE_URL:http://prediction-engine:9100}") String predictionBaseUrl) {
         this.scheduleMonitorService = scheduleMonitorService;
         this.priorityRequestProducer = priorityRequestProducer;
         this.busStatusRepository = busStatusRepository;
+        this.restTemplate = restTemplate;
+        this.predictionBaseUrl = predictionBaseUrl;
         loadPersistedStatuses();
         seedInitialFleet();
     }
@@ -91,6 +101,21 @@ public class FleetTelemetryService {
     }
 
     public CommuterRouteResponse routeBuses(String routeId) {
+        Integer predictedPassengers = null;
+        OccupancyStatus predictedOccupancy = null;
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            CrowdPredictionRequest request = new CrowdPredictionRequest(routeId, now.getHour(), now.getDayOfWeek().getValue());
+            ResponseEntity<CrowdPredictionResponse> response = restTemplate.postForEntity(
+                    predictionBaseUrl + "/api/v1/prediction/crowd", request, CrowdPredictionResponse.class);
+            if (response.getBody() != null) {
+                predictedPassengers = response.getBody().predictedPassengers();
+                predictedOccupancy = occupancyFromPassengerCount(predictedPassengers);
+            }
+        } catch (Exception ignored) {
+            // Prediction engine unavailable
+        }
+
         List<CommuterBusResponse> buses = latestByBusId.values().stream()
                 .filter(snapshot -> routeId.equals(snapshot.routeId))
                 .sorted(Comparator.comparing(BusSnapshot::busId))
@@ -103,7 +128,7 @@ public class FleetTelemetryService {
                 ))
                 .toList();
 
-        return new CommuterRouteResponse(routeId, buses);
+        return new CommuterRouteResponse(routeId, predictedPassengers, predictedOccupancy, buses);
     }
 
     /** Returns all known buses with their operational status for the admin fleet view. */

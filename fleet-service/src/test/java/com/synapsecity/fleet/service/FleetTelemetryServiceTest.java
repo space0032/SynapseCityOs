@@ -5,12 +5,14 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.springframework.web.client.RestTemplate;
+
 class FleetTelemetryServiceTest {
 
     @Test
     void shouldEmitPriorityRequestForLateBusNearIntersection() {
         PriorityRequestProducer producer = new PriorityRequestProducer();
-        FleetTelemetryService service = new FleetTelemetryService(new ScheduleMonitorService(), producer, null);
+        FleetTelemetryService service = new FleetTelemetryService(new ScheduleMonitorService(), producer, null, new RestTemplate(), "http://localhost:9100");
 
         BusTelemetryResponse response = service.ingest(new BusTelemetryRequest(
                 "BUS-3",
@@ -30,7 +32,7 @@ class FleetTelemetryServiceTest {
     @Test
     void shouldReturnRouteBusesWithOccupancyStatus() {
         PriorityRequestProducer producer = new PriorityRequestProducer();
-        FleetTelemetryService service = new FleetTelemetryService(new ScheduleMonitorService(), producer, null);
+        FleetTelemetryService service = new FleetTelemetryService(new ScheduleMonitorService(), producer, null, new RestTemplate(), "http://localhost:9100");
 
         service.ingest(new BusTelemetryRequest("BUS-4", new GpsCoordinatesDto(40.7314, -73.9340), 21.0, 5, "R2"));
         service.ingest(new BusTelemetryRequest("BUS-5", new GpsCoordinatesDto(40.7314, -73.9340), 17.0, 25, "R2"));

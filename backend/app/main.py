@@ -463,6 +463,14 @@ async def high_pollution_zones() -> dict:
     return {"count": len(items), "items": items}
 
 
+@app.get("/api/v1/pollution/all")
+async def all_pollution_zones() -> dict:
+    # We will just return the in-memory POLLUTION_ZONES if the DB logic doesn't support list_all yet
+    # Or fallback to DB if implemented. For now, in-memory is sufficient.
+    items = list(POLLUTION_ZONES.values())
+    return {"count": len(items), "items": items}
+
+
 @app.post("/api/v1/parking/ingest")
 async def ingest_parking(payload: ParkingSlotIngest) -> dict:
     ts = payload.recorded_at or utcnow()

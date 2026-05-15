@@ -56,6 +56,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/synapsecity
       SPRING_DATASOURCE_USERNAME: synapse
       SPRING_DATASOURCE_PASSWORD: synapse
+      PREDICTION_BASE_URL: http://prediction-engine:9100
     depends_on:
       - postgres
 

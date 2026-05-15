@@ -11,6 +11,7 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
 
 try:
     from influxdb_client import InfluxDBClient, Point
@@ -36,6 +37,7 @@ INFLUX_BUCKET = os.getenv("INFLUX_BUCKET", "traffic_analytics")
 INFLUX_TOKEN = os.getenv("INFLUX_TOKEN", "synapse-influx-token")
 
 MODEL: Optional[LinearRegression] = None
+CROWD_MODEL: Optional[RandomForestRegressor] = None
 MODEL_VERSION = 0
 MODEL_TRAINED_AT: Optional[str] = None
 LAST_TRAINING_ROWS = 0
@@ -49,6 +51,12 @@ class PredictionRequest(BaseModel):
     lead_minutes: int = Field(default=30, ge=15, le=30)
 
 
+class CrowdPredictionRequest(BaseModel):
+    route_id: str
+    hour: int
+    day: int
+
+
 class TrainingRequest(BaseModel):
     rows: int = Field(default=288, ge=48, le=3000)
 
@@ -59,6 +67,10 @@ def utcnow() -> datetime:
 
 def _feature_row(hour: int, vehicle_count: int, bus_delay_minutes: float) -> List[float]:
     return [float(hour), float(vehicle_count), float(bus_delay_minutes)]
+
+
+def _route_id_to_int(route_id: str) -> int:
+    return sum(ord(c) for c in route_id)
 
 
 def generate_mock_historical_data(rows: int = 288) -> List[dict]:
@@ -81,6 +93,28 @@ def generate_mock_historical_data(rows: int = 288) -> List[dict]:
     return records
 
 
+def generate_mock_crowd_data(rows: int = 500) -> tuple[List[List[float]], List[float]]:
+    features = []
+    targets = []
+    for _ in range(rows):
+        route_int = random.randint(100, 200)
+        hour = random.randint(0, 23)
+        day = random.randint(1, 7)
+        is_peak = hour in PEAK_HOURS
+        is_weekend = day >= 6
+        
+        # Determine passenger count
+        base = random.randint(5, 15)
+        if is_peak and not is_weekend:
+            base += random.randint(20, 35) # Rush hour
+        if is_weekend:
+            base += random.randint(0, 10) # Weekend
+        
+        features.append([float(route_int), float(hour), float(day)])
+        targets.append(float(base))
+    return features, targets
+
+
 def write_history_to_influx(records: List[dict]) -> bool:
     if not records or InfluxDBClient is None:
         return False
@@ -97,7 +131,6 @@ def write_history_to_influx(records: List[dict]) -> bool:
                 for row in records
             ]
             write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=points)
-        return True
         return True
     except Exception:
         return False
@@ -126,7 +159,7 @@ def fetch_historical_data_from_influx() -> List[dict]:
 
 
 def train_model(rows: int = 288) -> dict:
-    global MODEL, MODEL_TRAINED_AT, MODEL_VERSION, LAST_TRAINING_ROWS
+    global MODEL, CROWD_MODEL, MODEL_TRAINED_AT, MODEL_VERSION, LAST_TRAINING_ROWS
 
     samples = fetch_historical_data_from_influx()
     influx_written = False
@@ -139,8 +172,14 @@ def train_model(rows: int = 288) -> dict:
 
     model = LinearRegression()
     model.fit(features, targets)
-
     MODEL = model
+
+    # Train crowd model
+    c_features, c_targets = generate_mock_crowd_data(max(rows, 500))
+    crowd_model = RandomForestRegressor(n_estimators=50, random_state=42)
+    crowd_model.fit(c_features, c_targets)
+    CROWD_MODEL = crowd_model
+
     MODEL_VERSION += 1
     LAST_TRAINING_ROWS = len(samples)
     MODEL_TRAINED_AT = utcnow().isoformat()
@@ -238,6 +277,24 @@ async def forecast(payload: PredictionRequest) -> dict:
         "predicted_vehicle_count": predicted_vehicle_count,
         "high_congestion": is_high_congestion,
         "alert_sent": alert_sent,
+        "model_version": MODEL_VERSION,
+    }
+
+
+@app.post("/api/v1/prediction/crowd")
+async def predict_crowd(payload: CrowdPredictionRequest) -> dict:
+    if CROWD_MODEL is None:
+        raise HTTPException(status_code=503, detail="crowd model not trained")
+
+    route_int = _route_id_to_int(payload.route_id)
+    features = [float(route_int), float(payload.hour), float(payload.day)]
+    prediction = CROWD_MODEL.predict([features])[0]
+    
+    return {
+        "route_id": payload.route_id,
+        "hour": payload.hour,
+        "day": payload.day,
+        "predicted_passengers": int(round(prediction)),
         "model_version": MODEL_VERSION,
     }
 

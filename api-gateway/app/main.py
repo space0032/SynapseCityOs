@@ -183,11 +183,17 @@ async def public_commuter_status(
     )
     air_quality = await fetch_json("GET", f"{BACKEND_BASE_URL}/api/v1/pollution/high")
 
+    routing_suggestion = "Route conditions are normal."
+    if air_quality and air_quality.get("items"):
+        high_pollution_zones = [item.get("zone_id") for item in air_quality["items"]]
+        routing_suggestion = f"High pollution detected in zones: {', '.join(high_pollution_zones)}. Consider taking public transit or finding an alternate route."
+
     return {
         "route_id": route_id,
         "bus_tracking": buses,
         "smart_parking": parking,
         "air_quality": air_quality,
+        "routing_suggestion": routing_suggestion,
     }
 
 
