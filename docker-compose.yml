@@ -86,6 +86,19 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: synapsecity-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@synapsecity.ac
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
   influxdb:
     image: influxdb:2.7.10
     container_name: synapsecity-influxdb
