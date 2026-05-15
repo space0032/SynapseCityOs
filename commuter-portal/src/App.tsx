@@ -28,9 +28,10 @@ type ParkingItem = { slot_id: string; zone_id: string; distance_m?: number; lati
 type PollutionItem = { zone_id: string; aqi?: number; pm25?: number; high_pollution?: boolean };
 type CommuterResponse = {
   route_id: string;
-  bus_tracking?: { buses?: BusItem[] };
+  bus_tracking?: { buses?: BusItem[]; predicted_passengers?: number; predicted_occupancy?: string };
   smart_parking?: { count?: number; items?: ParkingItem[] };
   air_quality?: { count?: number; items?: PollutionItem[] };
+  routing_suggestion?: string;
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -111,14 +112,20 @@ function busIcon(late: boolean) {
 }
 
 // ── Alert Banner ───────────────────────────────────────────────────────────────
-function AlertBanner({ buses, pollution }: { buses: BusItem[]; pollution: PollutionItem[] }) {
+function AlertBanner({ buses, pollution, routing_suggestion }: { buses: BusItem[]; pollution: PollutionItem[]; routing_suggestion?: string }) {
   const [dismissed, setDismissed] = useState<string[]>([]);
   const lateBuses = buses.filter(b => b.is_late);
-  const highPollution = pollution.filter(p => p.high_pollution);
+  
   const alerts = [
     ...lateBuses.map(b => ({ id: `bus-${b.bus_id}`, type: 'warning' as const, msg: `Bus ${b.bus_id} is running late on this route.` })),
-    ...highPollution.map(p => ({ id: `pol-${p.zone_id}`, type: 'danger' as const, msg: `High pollution in Zone ${p.zone_id} — AQI: ${p.aqi}. Consider public transit.` })),
-  ].filter(a => !dismissed.includes(a.id));
+  ];
+  
+  // High-priority pollution routing suggestion from API Gateway
+  if (routing_suggestion && routing_suggestion !== "Route conditions are normal.") {
+    alerts.push({ id: 'routing-suggestion', type: 'danger' as const, msg: routing_suggestion });
+  }
+
+  const activeAlerts = alerts.filter(a => !dismissed.includes(a.id));
 
   if (alerts.length === 0) return null;
   return (
@@ -265,7 +272,7 @@ function CommuterApp() {
       <main style={{ padding: '24px', maxWidth: '1300px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }} className="animate-fade-in">
 
         {/* Alert Banners */}
-        <AlertBanner buses={buses} pollution={pollution} />
+        <AlertBanner buses={buses} pollution={pollution} routing_suggestion={data?.routing_suggestion} />
 
         <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
 
@@ -456,6 +463,16 @@ function CommuterApp() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Bus size={18} color="var(--accent-cyan)" /><h3 style={{ margin: 0, fontSize: '16px' }}>Live Transit</h3></div>
                   <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>Route {routeId}</span>
                 </div>
+                {/* AI Prediction Badge */}
+                {data?.bus_tracking?.predicted_occupancy && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '10px', marginBottom: '14px' }}>
+                    <span style={{ fontSize: '15px' }}>🔮</span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      AI Forecast: <strong style={{ color: seatColor(data.bus_tracking.predicted_occupancy) }}>{seatLabel(data.bus_tracking.predicted_occupancy)}</strong>
+                      {data.bus_tracking.predicted_passengers != null && ` (~${data.bus_tracking.predicted_passengers} pax)`}
+                    </span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {buses.map(bus => (
                     <div key={bus.bus_id} style={{ background: 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '12px', border: bus.is_late ? '1px solid rgba(239,68,68,0.2)' : '1px solid transparent' }}>

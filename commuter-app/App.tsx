@@ -47,6 +47,8 @@ type CommuterResponse = {
   route_id: string;
   bus_tracking?: {
     buses?: BusItem[];
+    predicted_passengers?: number;
+    predicted_occupancy?: string;
   };
   smart_parking?: {
     count?: number;
@@ -56,6 +58,7 @@ type CommuterResponse = {
     count?: number;
     items?: PollutionItem[];
   };
+  routing_suggestion?: string;
 };
 
 type V2PAlertState = {
@@ -279,6 +282,14 @@ export default function App() {
                   <Text style={styles.panelTitle}>Live Transit Feed</Text>
                   <View style={styles.badge}><Text style={styles.badgeText}>Real-time</Text></View>
                 </View>
+                {data?.bus_tracking?.predicted_occupancy ? (
+                  <View style={styles.predictionBadge}>
+                    <Text style={styles.predictionText}>
+                      🔮 Forecast: <Text style={{ color: data.bus_tracking.predicted_occupancy === 'EMPTY' ? '#10b981' : data.bus_tracking.predicted_occupancy === 'MODERATE' ? '#f59e0b' : '#ef4444' }}>{seatLabel(data.bus_tracking.predicted_occupancy)}</Text>
+                      {data.bus_tracking.predicted_passengers != null && ` (~${data.bus_tracking.predicted_passengers} pax)`}
+                    </Text>
+                  </View>
+                ) : null}
                 <View style={styles.dataList}>
                   {(data?.bus_tracking?.buses ?? []).map((bus) => (
                     <View key={bus.bus_id} style={styles.item}>
@@ -352,7 +363,7 @@ export default function App() {
 
                 {hasHighPollution ? (
                   <View style={styles.pollutionHigh}>
-                    <Text style={styles.pollutionText}>⚠️ Air quality is poor in some zones. Consider public transit.</Text>
+                    <Text style={styles.pollutionText}>⚠️ {data?.routing_suggestion && data.routing_suggestion !== "Route conditions are normal." ? data.routing_suggestion : "Air quality is poor in some zones. Consider public transit."}</Text>
                   </View>
                 ) : (
                   <View style={styles.pollutionNormal}>
@@ -450,6 +461,8 @@ const styles = StyleSheet.create({
   panelTitle: { color: "#f8fafc", fontSize: 18, fontWeight: "700" },
   badge: { backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   badgeText: { color: '#94a3b8', fontSize: 11, fontWeight: '600' },
+  predictionBadge: { backgroundColor: 'rgba(56,189,248,0.1)', borderColor: 'rgba(56,189,248,0.2)', borderWidth: 1, padding: 10, borderRadius: 12, marginBottom: 12 },
+  predictionText: { color: '#f8fafc', fontSize: 13, fontWeight: '600' },
   inputGroup: { marginBottom: 12 },
   label: { color: '#94a3b8', fontSize: 13, fontWeight: '500', marginBottom: 6 },
   input: { backgroundColor: "rgba(15, 23, 42, 0.6)", color: "#f8fafc", borderWidth: 1, borderColor: "#334155", borderRadius: 12, padding: 12, fontSize: 15 },
