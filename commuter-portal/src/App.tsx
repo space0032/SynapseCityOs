@@ -174,6 +174,7 @@ function CommuterApp() {
   const [availableRoutes, setAvailableRoutes] = useState<string[]>([]);
   const [latitude, setLatitude]       = useState('22.3000');
   const [longitude, setLongitude]     = useState('73.2000');
+  const [isElderly, setIsElderly]     = useState(false);
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const [data, setData]               = useState<CommuterResponse | null>(null);
@@ -199,7 +200,7 @@ function CommuterApp() {
   const loadData = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const q = new URLSearchParams({ route_id: routeId, latitude, longitude });
+      const q = new URLSearchParams({ route_id: routeId, latitude, longitude, is_elderly: isElderly ? "true" : "false" });
       const res = await fetch(`${API_BASE_URL}/api/public/commuter?${q}`);
       if (!res.ok) throw new Error(`Gateway error (${res.status})`);
       setData(await res.json());
@@ -297,6 +298,16 @@ function CommuterApp() {
                       style={{ width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid var(--panel-border)', background: 'rgba(15,23,42,0.6)', color: 'white', outline: 'none', fontSize: '13px' }} />
                   </div>
                 ))}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <label style={{ fontSize: '13px', color: 'var(--text-secondary)', cursor: 'pointer' }} htmlFor="elderly-toggle">Elderly Profile (Priority Parking)</label>
+                <input 
+                  type="checkbox" 
+                  id="elderly-toggle"
+                  checked={isElderly} 
+                  onChange={e => setIsElderly(e.target.checked)} 
+                  style={{ cursor: 'pointer', accentColor: 'var(--accent-cyan)', width: '18px', height: '18px' }} 
+                />
               </div>
               <button onClick={() => { void loadData(); }} disabled={loading}
                 style={{ width: '100%', padding: '12px', borderRadius: '10px', border: 'none', background: 'var(--accent-cyan)', color: '#0f172a', fontWeight: 700, fontSize: '14px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>

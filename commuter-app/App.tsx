@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   useWindowDimensions,
@@ -91,6 +92,7 @@ export default function App() {
   const [routeId, setRouteId] = useState(DEFAULT_ROUTE_ID);
   const [latitude, setLatitude] = useState(DEFAULT_LATITUDE);
   const [longitude, setLongitude] = useState(DEFAULT_LONGITUDE);
+  const [isElderly, setIsElderly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<CommuterResponse | null>(null);
@@ -123,6 +125,7 @@ export default function App() {
         route_id: routeId || DEFAULT_ROUTE_ID,
         latitude: latitude || DEFAULT_LATITUDE,
         longitude: longitude || DEFAULT_LONGITUDE,
+        is_elderly: isElderly ? "true" : "false",
       });
       const response = await fetch(`${API_BASE_URL}/api/public/commuter?${query.toString()}`);
       if (!response.ok) {
@@ -243,6 +246,10 @@ export default function App() {
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Longitude</Text>
                 <TextInput style={styles.input} value={longitude} onChangeText={setLongitude} />
+              </View>
+              <View style={[styles.inputGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+                <Text style={[styles.label, { marginBottom: 0 }]}>Elderly Profile (Priority Parking)</Text>
+                <Switch value={isElderly} onValueChange={setIsElderly} trackColor={{ false: '#334155', true: '#10b981' }} />
               </View>
               <Pressable style={styles.button} onPress={() => void loadCommuterData()}>
                 <Text style={styles.buttonText}>{loading ? "Syncing..." : "Refresh Dashboard"}</Text>

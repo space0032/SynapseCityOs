@@ -51,6 +51,7 @@ class TrafficIngest(BaseModel):
     lane: str
     vehicle_count: int = Field(ge=0)
     pedestrian_count: int = Field(ge=0)
+    priority_pedestrians: int = Field(default=0, ge=0)
     sensor_id: str = "edge-camera-1"
 
 
@@ -94,6 +95,7 @@ class ParkingSlotIngest(BaseModel):
     zone_id: str
     latitude: float
     longitude: float
+    distance_from_entrance: float = Field(default=0.0)
     occupied: bool
     recorded_at: Optional[datetime] = None
 
@@ -128,6 +130,7 @@ class CameraConfig(BaseModel):
 class LaneState:
     vehicle_count: int = 0
     pedestrian_count: int = 0
+    priority_pedestrians: int = 0
     last_nonzero_vehicle_seen_at: Optional[datetime] = None
 
 
@@ -199,14 +202,21 @@ def evaluate_dynamic_actuation(
     if predictive_alert is not None:
         max_green = predictive_alert["recommended_max_green_s"]
         public_predictive_alert = {k: v for k, v in predictive_alert.items() if k != "expires_at_dt"}
+    
+    # Base estimated green time
     estimated_green = min(max_green, max(MIN_GREEN_SECONDS, MIN_GREEN_SECONDS + lane.vehicle_count * 2))
+
+    # Priority pedestrian extension
+    if lane.priority_pedestrians > 0:
+        estimated_green = min(max_green, estimated_green + 10) # Add 10 seconds for priority pedestrians
 
     can_gap_out = current_green_elapsed_s >= MIN_GREEN_SECONDS and lane.vehicle_count == 0
     no_recent_vehicle = (
         lane.last_nonzero_vehicle_seen_at is None
         or (current - lane.last_nonzero_vehicle_seen_at) >= timedelta(seconds=GAP_OUT_SECONDS)
     )
-    gap_out = can_gap_out and no_recent_vehicle
+    # Never gap out early if there are priority pedestrians waiting
+    gap_out = can_gap_out and no_recent_vehicle and lane.priority_pedestrians == 0
 
     return {
         "min_green_s": MIN_GREEN_SECONDS,
@@ -257,6 +267,7 @@ async def ingest_traffic(payload: TrafficIngest) -> dict:
     lane = LANE_STORE.setdefault(payload.lane, LaneState())
     lane.vehicle_count = payload.vehicle_count
     lane.pedestrian_count = payload.pedestrian_count
+    lane.priority_pedestrians = payload.priority_pedestrians
 
     if payload.vehicle_count > 0:
         lane.last_nonzero_vehicle_seen_at = now
@@ -268,6 +279,7 @@ async def ingest_traffic(payload: TrafficIngest) -> dict:
         "lane": payload.lane,
         "vehicle_count": payload.vehicle_count,
         "pedestrian_count": payload.pedestrian_count,
+        "priority_pedestrians": payload.priority_pedestrians,
     }
 
 
@@ -459,6 +471,7 @@ async def ingest_parking(payload: ParkingSlotIngest) -> dict:
         "zone_id": payload.zone_id,
         "latitude": payload.latitude,
         "longitude": payload.longitude,
+        "distance_from_entrance": payload.distance_from_entrance,
         "occupied": payload.occupied,
         "recorded_at": ts,
     }
@@ -472,6 +485,7 @@ def nearest_available_parking(
     latitude: float,
     longitude: float,
     limit: int = Query(default=5, ge=1, le=100),
+    is_elderly: bool = Query(default=False),
 ) -> dict:
     available = []
     for slot in PARKING_SLOTS.values():
@@ -480,8 +494,15 @@ def nearest_available_parking(
         distance_m = haversine_meters(latitude, longitude, slot["latitude"], slot["longitude"])
         available.append({**slot, "distance_m": round(distance_m, 2)})
 
-    nearest = sorted(available, key=lambda x: x["distance_m"])[:limit]
-    return {"query": {"latitude": latitude, "longitude": longitude, "limit": limit}, "count": len(nearest), "items": nearest}
+    if is_elderly:
+        # Priority 1: Distance to Entrance
+        # Priority 2: Distance to Car
+        nearest = sorted(available, key=lambda x: (x.get("distance_from_entrance", 0.0), x["distance_m"]))[:limit]
+    else:
+        # Default: Just nearest to the car
+        nearest = sorted(available, key=lambda x: x["distance_m"])[:limit]
+        
+    return {"query": {"latitude": latitude, "longitude": longitude, "limit": limit, "is_elderly": is_elderly}, "count": len(nearest), "items": nearest}
 
 
 @app.post("/api/v1/v2p/alert")

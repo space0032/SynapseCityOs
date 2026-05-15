@@ -173,12 +173,13 @@ async def public_commuter_status(
     latitude: float,
     longitude: float,
     parking_limit: int = Query(default=5, ge=1, le=100),
+    is_elderly: bool = Query(default=False),
 ) -> dict:
     buses = await fetch_json("GET", f"{FLEET_BASE_URL}/api/v1/commuter/buses/{route_id}")
     parking = await fetch_json(
         "GET",
         f"{BACKEND_BASE_URL}/api/v1/commuter/parking",
-        params={"latitude": latitude, "longitude": longitude, "limit": parking_limit},
+        params={"latitude": latitude, "longitude": longitude, "limit": parking_limit, "is_elderly": is_elderly},
     )
     air_quality = await fetch_json("GET", f"{BACKEND_BASE_URL}/api/v1/pollution/high")
 

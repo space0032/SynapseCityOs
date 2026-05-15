@@ -43,6 +43,7 @@ try:
         Column("zone_id", String, nullable=False),
         Column("latitude", Float, nullable=False),
         Column("longitude", Float, nullable=False),
+        Column("distance_from_entrance", Float, nullable=False, default=0.0),
         Column("occupied", Boolean, nullable=False, default=False),
         Column("recorded_at", DateTime(timezone=True), nullable=False),
     )
@@ -169,7 +170,7 @@ async def db_upsert_parking(slot: Dict[str, Any]) -> bool:
         async with _engine.begin() as conn:
             stmt = pg_insert(parking_table).values(**slot).on_conflict_do_update(
                 index_elements=["slot_id"],
-                set_={k: slot[k] for k in ("zone_id", "latitude", "longitude", "occupied", "recorded_at")},
+                set_={k: slot[k] for k in ("zone_id", "latitude", "longitude", "distance_from_entrance", "occupied", "recorded_at")},
             )
             await conn.execute(stmt)
         return True
