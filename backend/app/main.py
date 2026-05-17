@@ -610,6 +610,7 @@ async def websocket_live_traffic(websocket: WebSocket):
 
 @app.post("/api/v1/admin/cameras/upload")
 async def admin_upload_camera_video(file: UploadFile = File(...)) -> dict:
+    os.makedirs("uploads", exist_ok=True)
     file_path = os.path.join("uploads", file.filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)

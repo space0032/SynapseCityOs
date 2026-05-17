@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
+    "start": "node --require ./polyfill.js node_modules/expo/bin/cli.js start",
+    "android": "node --require ./polyfill.js node_modules/expo/bin/cli.js start --android",
+    "ios": "node --require ./polyfill.js node_modules/expo/bin/cli.js start --ios",
+    "web": "node --require ./polyfill.js node_modules/expo/bin/cli.js start --web"
   },
   "dependencies": {
     "expo": "~54.0.33",
