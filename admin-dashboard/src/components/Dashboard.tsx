@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Camera, Activity, AlertTriangle, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -8,6 +8,11 @@ export default function Dashboard() {
   const { hasRole } = useAuth();
   const [data, setData] = useState<any>({ cameras: [], traffic: [], alerts: { emergency_overrides: [], high_pollution_zones: [] } });
   const [newCam, setNewCam] = useState({ id: '', source: '', lane: '' });
+  const [sourceType, setSourceType] = useState('rtsp');
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const loadData = async () => {
     try {
@@ -15,7 +20,7 @@ export default function Dashboard() {
         fetch(`${API_BASE_URL}/api/admin/cameras`).then(res => res.json()),
         fetch(`${API_BASE_URL}/api/admin/active-alerts`).then(res => res.json()),
       ]);
-      setData(prev => ({
+      setData((prev: any) => ({
         ...prev,
         cameras: cameras.items || [],
         alerts: {
@@ -38,7 +43,7 @@ export default function Dashboard() {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'live_traffic' && msg.data) {
-          setData(prev => ({ ...prev, traffic: msg.data.items || [] }));
+          setData((prev: any) => ({ ...prev, traffic: msg.data.items || [] }));
         }
       } catch (e) {
         console.error("WebSocket message error", e);
@@ -51,14 +56,63 @@ export default function Dashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    if (sourceType === 'webcam') {
+      navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }).catch(console.error);
+    } else {
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+        videoRef.current.srcObject = null;
+      }
+    }
+  }, [sourceType]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const f = e.target.files[0];
+      setFile(f);
+      setPreviewUrl(URL.createObjectURL(f));
+    }
+  };
+
   const handleAddCam = async (e: React.FormEvent) => {
     e.preventDefault();
+    let finalSource = newCam.source;
+    if (sourceType === 'webcam') {
+      finalSource = '0';
+    } else if (sourceType === 'file' && file) {
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/admin/cameras/upload`, {
+          method: 'POST',
+          body: formData
+        });
+        if (!res.ok) throw new Error("Upload failed");
+        const data = await res.json();
+        finalSource = data.url;
+      } catch (err) {
+        console.error(err);
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
+    }
+
     await fetch(`${API_BASE_URL}/api/admin/cameras`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sensor_id: newCam.id, source: newCam.source, lane: newCam.lane })
+      body: JSON.stringify({ sensor_id: newCam.id, source: finalSource, lane: newCam.lane })
     });
     setNewCam({ id: '', source: '', lane: '' });
+    setFile(null);
+    setPreviewUrl('');
     loadData();
   };
 
@@ -82,11 +136,39 @@ export default function Dashboard() {
               <h3 style={{ margin: 0, fontSize: '18px' }}>Camera Infrastructure</h3>
             </div>
             
-            <form onSubmit={handleAddCam} style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-              <input placeholder="Sensor ID" value={newCam.id} onChange={e => setNewCam({...newCam, id: e.target.value})} required style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'rgba(15, 23, 42, 0.6)', color: 'white' }} />
-              <input placeholder="Source" value={newCam.source} onChange={e => setNewCam({...newCam, source: e.target.value})} required style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'rgba(15, 23, 42, 0.6)', color: 'white' }} />
-              <input placeholder="Lane" value={newCam.lane} onChange={e => setNewCam({...newCam, lane: e.target.value})} required style={{ width: '80px', padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'rgba(15, 23, 42, 0.6)', color: 'white' }} />
-              <button type="submit" style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: 'var(--accent-cyan)', color: '#0f172a', fontWeight: 'bold', cursor: 'pointer' }}>Add</button>
+            <form onSubmit={handleAddCam} style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input placeholder="Sensor ID" value={newCam.id} onChange={e => setNewCam({...newCam, id: e.target.value})} required style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'rgba(15, 23, 42, 0.6)', color: 'white' }} />
+                <input placeholder="Lane" value={newCam.lane} onChange={e => setNewCam({...newCam, lane: e.target.value})} required style={{ width: '80px', padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'rgba(15, 23, 42, 0.6)', color: 'white' }} />
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <select value={sourceType} onChange={e => setSourceType(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'rgba(15, 23, 42, 0.6)', color: 'white' }}>
+                  <option value="rtsp">RTSP URL</option>
+                  <option value="webcam">Webcam</option>
+                  <option value="file">Upload File</option>
+                </select>
+                {sourceType === 'rtsp' && (
+                  <input placeholder="Source (rtsp://...)" value={newCam.source} onChange={e => setNewCam({...newCam, source: e.target.value})} required style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'rgba(15, 23, 42, 0.6)', color: 'white' }} />
+                )}
+                {sourceType === 'file' && (
+                  <input type="file" accept="video/*" onChange={handleFileChange} required style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'rgba(15, 23, 42, 0.6)', color: 'white' }} />
+                )}
+              </div>
+
+              {(sourceType === 'webcam' || (sourceType === 'file' && previewUrl)) && (
+                <div style={{ width: '100%', height: '200px', background: '#000', borderRadius: '8px', overflow: 'hidden', position: 'relative' }}>
+                  {sourceType === 'webcam' ? (
+                    <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <video src={previewUrl} autoPlay loop muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  )}
+                  <div style={{ position: 'absolute', top: '8px', left: '8px', background: 'rgba(0,0,0,0.5)', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', color: 'white' }}>Preview</div>
+                </div>
+              )}
+
+              <button type="submit" disabled={uploading} style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: 'var(--accent-cyan)', color: '#0f172a', fontWeight: 'bold', cursor: 'pointer', opacity: uploading ? 0.7 : 1 }}>
+                {uploading ? 'Uploading...' : 'Add Camera'}
+              </button>
             </form>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -94,9 +176,9 @@ export default function Dashboard() {
                 <div key={c.sensor_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
                   <div>
                     <div style={{ fontWeight: 'bold' }}>{c.sensor_id} <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Lane: {c.lane}</span></div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{c.source}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{c.source}</div>
                   </div>
-                  <button onClick={() => handleDeleteCam(c.sensor_id)} style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}><Trash2 size={16} /></button>
+                  <button onClick={() => handleDeleteCam(c.sensor_id)} style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer', marginLeft: '12px' }}><Trash2 size={16} /></button>
                 </div>
               ))}
             </div>

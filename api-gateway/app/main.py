@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 import redis.asyncio as redis
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Depends, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_limiter import FastAPILimiter
 from fastapi_limiter.depends import RateLimiter
@@ -125,6 +125,19 @@ async def admin_active_alerts() -> dict:
         "high_pollution_zones": high_pollution,
     }
 
+
+@app.post("/api/admin/cameras/upload")
+async def admin_upload_camera_video(file: UploadFile = File(...)) -> Any:
+    # Forward the file to backend
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        # Read file into memory and send
+        content = await file.read()
+        response = await client.post(
+            f"{BACKEND_BASE_URL}/api/v1/admin/cameras/upload",
+            files={"file": (file.filename, content, file.content_type)}
+        )
+        response.raise_for_status()
+        return response.json()
 
 @app.get("/api/admin/cameras")
 async def admin_list_cameras() -> Any:

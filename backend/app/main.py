@@ -10,7 +10,10 @@ from itertools import islice
 from math import atan2, cos, radians, sin, sqrt
 from typing import Deque, Dict, List, Optional
 
-from fastapi import FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect, File, UploadFile
+from fastapi.staticfiles import StaticFiles
+import shutil
+
 from pydantic import BaseModel, Field
 import asyncio
 
@@ -24,6 +27,9 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Synapse City OS - Phase 3", lifespan=lifespan)
+
+os.makedirs("uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 class ConnectionManager:
     def __init__(self):
@@ -600,6 +606,16 @@ async def websocket_live_traffic(websocket: WebSocket):
     except WebSocketDisconnect:
         ws_manager.disconnect(websocket)
 
+
+
+@app.post("/api/v1/admin/cameras/upload")
+async def admin_upload_camera_video(file: UploadFile = File(...)) -> dict:
+    file_path = os.path.join("uploads", file.filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    # Return a URL that the edge processor or UI can access
+    # Depending on setup this could be just the filename, but let's provide a full local URL path
+    return {"message": "file uploaded", "url": f"http://backend:8000/uploads/{file.filename}"}
 
 
 @app.get("/api/v1/admin/cameras")
