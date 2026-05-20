@@ -11,6 +11,7 @@ from math import atan2, cos, radians, sin, sqrt
 from typing import Deque, Dict, List, Optional
 
 from fastapi import FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect, File, UploadFile
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 import shutil
 
@@ -59,6 +60,7 @@ class TrafficIngest(BaseModel):
     pedestrian_count: int = Field(ge=0)
     priority_pedestrians: int = Field(default=0, ge=0)
     sensor_id: str = "edge-camera-1"
+    vehicle_ids: List[int] = Field(default_factory=list)
 
 
 class TrafficDecisionRequest(BaseModel):
@@ -170,6 +172,7 @@ POLLUTION_ZONES: Dict[str, dict] = {}
 PARKING_SLOTS: Dict[str, dict] = {}
 V2P_ALERTS: Deque[dict] = deque(maxlen=500)
 PREDICTIVE_CONGESTION_ALERTS: Dict[str, dict] = {}
+SEEN_VEHICLE_IDS: Dict[str, set] = {}
 
 
 def utcnow() -> datetime:
@@ -277,6 +280,13 @@ async def ingest_traffic(payload: TrafficIngest) -> dict:
 
     if payload.vehicle_count > 0:
         lane.last_nonzero_vehicle_seen_at = now
+        
+    seen = SEEN_VEHICLE_IDS.setdefault(payload.lane, set())
+    for vid in payload.vehicle_ids:
+        if vid not in seen:
+            seen.add(vid)
+            # Log new vehicle pass
+            await _db.db_insert_vehicle_pass(payload.lane, vid, now)
 
     await ws_manager.broadcast_json({"type": "live_traffic", "data": admin_live_traffic()})
 
@@ -647,3 +657,16 @@ async def admin_delete_camera(sensor_id: str) -> dict:
         del CAMERA_STORE[sensor_id]
     await _db.db_delete_camera(sensor_id)
     return {"message": "camera deleted"}
+
+
+@app.get("/api/v1/admin/traffic/export")
+async def export_traffic_data():
+    passes = await _db.db_list_vehicle_passes(limit=5000)
+    if not passes:
+        return PlainTextResponse("id,lane,vehicle_id,recorded_at\n", media_type="text/csv")
+        
+    csv_lines = ["id,lane,vehicle_id,recorded_at"]
+    for p in passes:
+        csv_lines.append(f"{p['id']},{p['lane']},{p['vehicle_id']},{p['recorded_at']}")
+        
+    return PlainTextResponse("\n".join(csv_lines), media_type="text/csv")

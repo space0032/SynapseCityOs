@@ -19,6 +19,7 @@ _metadata = None
 cameras_table = None
 parking_table = None
 anomalies_table = None
+vehicle_passes_table = None
 
 try:
     from sqlalchemy import (
@@ -57,6 +58,14 @@ try:
         Column("z_accel", Float, nullable=False),
         Column("recorded_at", DateTime(timezone=True), nullable=False),
         Column("is_anomaly", Boolean, nullable=False, default=True),
+    )
+
+    vehicle_passes_table = Table(
+        "vehicle_passes", _metadata,
+        Column("id", Integer, primary_key=True, autoincrement=True),
+        Column("lane", String, nullable=False),
+        Column("vehicle_id", Integer, nullable=False),
+        Column("recorded_at", DateTime(timezone=True), nullable=False),
     )
 
     lane_states_table = Table(
@@ -217,6 +226,39 @@ async def db_list_anomalies() -> Optional[List[Dict[str, Any]]]:
             rows = await conn.execute(
                 select(anomalies_table).where(anomalies_table.c.is_anomaly == True)  # noqa: E712
                 .order_by(anomalies_table.c.recorded_at.desc()).limit(500)
+            )
+            return [
+                {k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in dict(r._mapping).items()}
+                for r in rows
+            ]
+    except Exception:
+        return None
+
+
+# ── Vehicle Passes ────────────────────────────────────────────────────────────
+
+async def db_insert_vehicle_pass(lane: str, vehicle_id: int, recorded_at: datetime) -> bool:
+    if _engine is None or 'vehicle_passes_table' not in globals() or vehicle_passes_table is None:
+        return False
+    try:
+        async with _engine.begin() as conn:
+            await conn.execute(vehicle_passes_table.insert().values(
+                lane=lane, vehicle_id=vehicle_id, recorded_at=recorded_at
+            ))
+        return True
+    except Exception:
+        return False
+
+async def db_list_vehicle_passes(limit: int = 1000) -> Optional[List[Dict[str, Any]]]:
+    if _engine is None or 'vehicle_passes_table' not in globals() or vehicle_passes_table is None:
+        return None
+    from sqlalchemy import select
+    try:
+        async with _engine.connect() as conn:
+            rows = await conn.execute(
+                select(vehicle_passes_table)
+                .order_by(vehicle_passes_table.c.recorded_at.desc())
+                .limit(limit)
             )
             return [
                 {k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in dict(r._mapping).items()}

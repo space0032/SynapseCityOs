@@ -143,7 +143,7 @@ def detect_v2p_risks(pedestrians: list, vehicles: list, api_base: str, intersect
                     pass
 
 
-def send_payload(api_base: str, lane: str, vehicle_count: int, pedestrian_count: int, priority_pedestrians: int, sensor_id: str) -> None:
+def send_payload(api_base: str, lane: str, vehicle_count: int, pedestrian_count: int, priority_pedestrians: int, sensor_id: str, vehicle_ids: list[int]) -> None:
     url = f"{api_base}/ingest/traffic"
     payload = {
         "lane": lane,
@@ -151,6 +151,7 @@ def send_payload(api_base: str, lane: str, vehicle_count: int, pedestrian_count:
         "pedestrian_count": pedestrian_count,
         "priority_pedestrians": priority_pedestrians,
         "sensor_id": sensor_id,
+        "vehicle_ids": vehicle_ids,
     }
     for attempt in range(3):
         try:
@@ -227,7 +228,8 @@ def process_camera(source: str, api_base: str, lane: str, sensor_id: str, inters
             detect_v2p_risks(pedestrians_tracked, vehicles_tracked, api_base, intersection_id, sensor_id)
 
             if current_time - last_send_time >= interval:
-                send_payload(api_base, lane, vehicle_count, pedestrian_count, priority_pedestrians, sensor_id)
+                current_vehicle_ids = [v['id'] for v in vehicles_tracked]
+                send_payload(api_base, lane, vehicle_count, pedestrian_count, priority_pedestrians, sensor_id, current_vehicle_ids)
                 send_heartbeat(api_base, sensor_id)
                 last_send_time = current_time
                 

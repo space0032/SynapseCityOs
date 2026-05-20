@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Camera, Activity, AlertTriangle, Trash2 } from 'lucide-react';
+import { Camera, Activity, AlertTriangle, Trash2, Database, Download } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:9000";
@@ -237,6 +237,49 @@ export default function Dashboard() {
             {data.alerts.emergency_overrides.length === 0 && data.alerts.high_pollution_zones.length === 0 && (
               <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic', textAlign: 'center', padding: '20px' }}>No active alerts. System nominal.</div>
             )}
+          </div>
+        </div>
+
+        {/* Data Extraction & Statistics Panel */}
+        <div className="glass" style={{ flex: '1 1 300px', padding: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+            <Database color="var(--accent-cyan)" />
+            <h3 style={{ margin: 0, fontSize: '18px' }}>Data & Statistics</h3>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '14px' }}>
+              Extract historical vehicle logs including unique vehicle tracking numbers, lanes, and timestamp data for analysis.
+            </p>
+            <div style={{ padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Log Type</span>
+                <span style={{ fontWeight: 'bold' }}>Vehicle Passes</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Format</span>
+                <span style={{ fontWeight: 'bold' }}>CSV</span>
+              </div>
+              <button 
+                onClick={() => window.open(`${API_BASE_URL}/api/admin/traffic/export`, '_blank')}
+                style={{ 
+                  marginTop: '8px',
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  gap: '8px',
+                  padding: '12px 16px', 
+                  borderRadius: '8px', 
+                  border: 'none', 
+                  background: 'var(--accent-cyan)', 
+                  color: '#0f172a', 
+                  fontWeight: 'bold', 
+                  cursor: 'pointer' 
+                }}
+              >
+                <Download size={18} />
+                Download Traffic Data
+              </button>
+            </div>
           </div>
         </div>
       </div>

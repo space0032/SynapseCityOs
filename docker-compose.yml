@@ -39,6 +39,8 @@ services:
       POLLUTION_PM25_THRESHOLD: "55"
       POLLUTION_NO2_THRESHOLD: "100"
       DATABASE_URL: "postgresql+asyncpg://synapse:synapse@postgres:5432/synapsecity"
+    volumes:
+      - ./data/uploads:/app/uploads
     depends_on:
       - mosquitto
       - redis

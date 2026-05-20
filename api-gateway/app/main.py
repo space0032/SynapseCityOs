@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 import httpx
 import redis.asyncio as redis
 from fastapi import FastAPI, HTTPException, Query, Depends, File, UploadFile
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_limiter import FastAPILimiter
 from fastapi_limiter.depends import RateLimiter
@@ -157,6 +158,15 @@ async def admin_delete_camera(sensor_id: str) -> Any:
 @app.get("/api/admin/fleet")
 async def admin_get_fleet() -> Any:
     return await fetch_json("GET", f"{FLEET_BASE_URL}/api/v1/admin/fleet")
+
+
+@app.get("/api/admin/traffic/export")
+@app.get("/api/v1/admin/traffic/export")
+async def admin_traffic_export():
+    client = httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS)
+    req = client.build_request("GET", f"{BACKEND_BASE_URL}/api/v1/admin/traffic/export")
+    r = await client.send(req, stream=True)
+    return StreamingResponse(r.aiter_raw(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=traffic_export.csv"}, background=client.aclose)
 
 
 @app.post("/api/admin/fleet/{bus_id}/action")
