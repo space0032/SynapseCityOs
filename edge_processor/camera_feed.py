@@ -25,22 +25,20 @@ app = Flask(__name__)
 
 def generate_frames(sensor_id):
     global latest_frames, frame_lock
+    last_counter = -1
     while True:
         with frame_lock:
-            frame = latest_frames.get(sensor_id)
-            if frame is None:
-                frame_bytes = None
-            else:
-                ret, buffer = cv2.imencode('.jpg', frame)
-                frame_bytes = buffer.tobytes() if ret else None
-        
-        if frame_bytes is None:
-            time.sleep(0.1)
+            frame_data = latest_frames.get(sensor_id)
+            
+        if frame_data is None or frame_data['counter'] == last_counter:
+            time.sleep(0.05) # Wait for a new frame
             continue
+            
+        last_counter = frame_data['counter']
+        frame_bytes = frame_data['bytes']
             
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        time.sleep(0.03)
 
 @app.route('/video_feed/<sensor_id>')
 def video_feed(sensor_id):
@@ -179,6 +177,7 @@ def process_camera(source: str, api_base: str, lane: str, sensor_id: str, inters
     print(json.dumps({"status": "started", "source": source, "lane": lane, "sensor_id": sensor_id}))
     track_history = defaultdict(list)
     last_send_time = time.time()
+    frame_counter = 0
 
     try:
         while not stop_flags.get(sensor_id, False):
@@ -186,12 +185,17 @@ def process_camera(source: str, api_base: str, lane: str, sensor_id: str, inters
             if not ok or frame is None:
                 continue
 
-            results = model.track(frame, persist=True, verbose=False)
+            # Optimize YOLO by reducing imgsz for faster processing
+            results = model.track(frame, persist=True, verbose=False, imgsz=480)
             annotated_frame = results[0].plot()
             
-            global latest_frames
-            with frame_lock:
-                latest_frames[sensor_id] = annotated_frame
+            # Encode frame here to save Flask thread CPU
+            ret, buffer = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            if ret:
+                frame_counter += 1
+                global latest_frames
+                with frame_lock:
+                    latest_frames[sensor_id] = {'bytes': buffer.tobytes(), 'counter': frame_counter}
 
             current_time = time.time()
             vehicle_count, pedestrian_count, priority_pedestrians = 0, 0, 0
