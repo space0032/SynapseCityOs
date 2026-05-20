@@ -173,12 +173,27 @@ export default function Dashboard() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {data.cameras.map((c: any) => (
-                <div key={c.sensor_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
-                  <div>
-                    <div style={{ fontWeight: 'bold' }}>{c.sensor_id} <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Lane: {c.lane}</span></div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{c.source}</div>
+                <div key={c.sensor_id} style={{ display: 'flex', flexDirection: 'column', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 'bold' }}>{c.sensor_id} <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Lane: {c.lane}</span></div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{c.source}</div>
+                    </div>
+                    <button onClick={() => handleDeleteCam(c.sensor_id)} style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer', marginLeft: '12px' }}><Trash2 size={16} /></button>
                   </div>
-                  <button onClick={() => handleDeleteCam(c.sensor_id)} style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer', marginLeft: '12px' }}><Trash2 size={16} /></button>
+                  
+                  {/* AI Live Preview directly in the dashboard */}
+                  <div style={{ marginTop: '12px', width: '100%', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--panel-border)', background: '#000', position: 'relative' }}>
+                    <img 
+                      src={`http://localhost:5000/video_feed/${c.sensor_id}`} 
+                      alt={`Live AI preview for ${c.sensor_id}`} 
+                      style={{ width: '100%', display: 'block' }}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 200' width='100%25' height='200'%3E%3Crect width='400' height='200' fill='%23111'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%23666'%3EAwaiting AI Stream...%3C/text%3E%3C/svg%3E";
+                      }}
+                    />
+                    <div style={{ position: 'absolute', top: '8px', left: '8px', background: 'rgba(0,0,0,0.6)', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', color: 'var(--accent-cyan)', fontWeight: 'bold' }}>Live AI Processing</div>
+                  </div>
                 </div>
               ))}
             </div>

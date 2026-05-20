@@ -134,35 +134,21 @@ services:
       - backend
       - influxdb
 
-  edge-processor-north:
+  edge-processor:
     build:
       context: ./edge_processor
       dockerfile: Dockerfile
-    container_name: synapsecity-edge-processor-north
+    container_name: synapsecity-edge-processor
+    ports:
+      - "5000:5000"
     environment:
       API_BASE: http://backend:8000
+    volumes:
+      - ./data:/data
     command: >
       python camera_feed.py
-        --source "rtsp://invalid"
-        --lane "North"
-        --sensor-id "edge-camera-north"
-        --interval 2
-    depends_on:
-      - backend
-
-  edge-processor-south:
-    build:
-      context: ./edge_processor
-      dockerfile: Dockerfile
-    container_name: synapsecity-edge-processor-south
-    environment:
-      API_BASE: http://backend:8000
-    command: >
-      python camera_feed.py
-        --source "rtsp://invalid"
-        --lane "South"
-        --sensor-id "edge-camera-south"
-        --interval 2
+        --api-base "http://backend:8000"
+        --port 5000
     depends_on:
       - backend
 
