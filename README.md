@@ -1,4 +1,4 @@
-<![CDATA[<div align="center">
+<div align="center">
 
 # 🧠 Synapse City OS
 
@@ -473,4 +473,3 @@ Key environment variables configured in `docker-compose.yml`:
 **Built with ❤️ for smarter cities**
 
 </div>
-]]>
