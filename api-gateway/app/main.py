@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import os
 import time
+import asyncio
 from typing import Any
 from contextlib import asynccontextmanager
 
 import httpx
+import websockets
 import redis.asyncio as redis
-from fastapi import FastAPI, HTTPException, Query, Depends, File, UploadFile
+from fastapi import FastAPI, HTTPException, Query, Depends, File, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_limiter import FastAPILimiter
@@ -77,6 +79,44 @@ async def fetch_json(method: str, url: str, **kwargs: Any) -> Any:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+async def proxy_websocket(client_ws: WebSocket, backend_ws_url: str):
+    await client_ws.accept()
+    try:
+        async with websockets.connect(backend_ws_url) as backend_ws:
+            async def forward_to_client():
+                while True:
+                    data = await backend_ws.recv()
+                    await client_ws.send_text(data)
+            
+            async def forward_to_backend():
+                while True:
+                    data = await client_ws.receive_text()
+                    await backend_ws.send(data)
+
+            await asyncio.gather(forward_to_client(), forward_to_backend())
+    except websockets.exceptions.ConnectionClosed:
+        pass
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"WS proxy error: {e}")
+    finally:
+        try:
+            await client_ws.close()
+        except:
+            pass
+
+@app.websocket("/api/v2p/alerts/ws")
+async def gateway_v2p_alerts_ws(websocket: WebSocket):
+    backend_url = f"{BACKEND_BASE_URL.replace('http', 'ws')}/api/v1/v2p/alerts/ws"
+    await proxy_websocket(websocket, backend_url)
+
+@app.websocket("/api/admin/live-traffic/ws")
+async def gateway_live_traffic_ws(websocket: WebSocket):
+    backend_url = f"{BACKEND_BASE_URL.replace('http', 'ws')}/api/v1/admin/live-traffic/ws"
+    await proxy_websocket(websocket, backend_url)
+
 
 
 @app.post("/api/gateway/traffic/decision")
@@ -223,6 +263,10 @@ async def public_commuter_status(
 @app.post("/api/prediction/forecast")
 async def prediction_forecast(payload: dict) -> Any:
     return await fetch_json("POST", f"{PREDICTION_BASE_URL}/api/v1/prediction/forecast", json=payload)
+
+@app.post("/api/prediction/crowd")
+async def prediction_crowd(payload: dict) -> Any:
+    return await fetch_json("POST", f"{PREDICTION_BASE_URL}/api/v1/prediction/crowd", json=payload)
 
 
 @app.post("/api/prediction/train")

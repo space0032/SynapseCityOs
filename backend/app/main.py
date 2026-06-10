@@ -52,6 +52,7 @@ class ConnectionManager:
                 self.disconnect(connection)
 
 ws_manager = ConnectionManager()
+v2p_ws_manager = ConnectionManager()
 
 
 class TrafficIngest(BaseModel):
@@ -481,9 +482,8 @@ async def high_pollution_zones() -> dict:
 
 @app.get("/api/v1/pollution/all")
 async def all_pollution_zones() -> dict:
-    # We will just return the in-memory POLLUTION_ZONES if the DB logic doesn't support list_all yet
-    # Or fallback to DB if implemented. For now, in-memory is sufficient.
-    items = list(POLLUTION_ZONES.values())
+    db_items = await _db.db_list_all_pollution_zones()
+    items = db_items if db_items is not None else list(POLLUTION_ZONES.values())
     return {"count": len(items), "items": items}
 
 
@@ -505,16 +505,17 @@ async def ingest_parking(payload: ParkingSlotIngest) -> dict:
 
 
 @app.get("/api/v1/commuter/parking")
-def nearest_available_parking(
+async def nearest_available_parking(
     latitude: float,
     longitude: float,
     limit: int = Query(default=5, ge=1, le=100),
     is_elderly: bool = Query(default=False),
 ) -> dict:
+    db_items = await _db.db_list_available_parking()
+    slots = db_items if db_items is not None else [s for s in PARKING_SLOTS.values() if not s["occupied"]]
+    
     available = []
-    for slot in PARKING_SLOTS.values():
-        if slot["occupied"]:
-            continue
+    for slot in slots:
         distance_m = haversine_meters(latitude, longitude, slot["latitude"], slot["longitude"])
         available.append({**slot, "distance_m": round(distance_m, 2)})
 
@@ -544,6 +545,8 @@ async def ingest_v2p_alert(payload: V2PAlertIngest) -> dict:
     }
     await _db.db_insert_v2p_alert(alert)
     V2P_ALERTS.append(alert)
+
+    await v2p_ws_manager.broadcast_json(alert)
 
     return {
         "message": "v2p alert broadcast",
@@ -615,6 +618,15 @@ async def websocket_live_traffic(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         ws_manager.disconnect(websocket)
+
+@app.websocket("/api/v1/v2p/alerts/ws")
+async def websocket_v2p_alerts(websocket: WebSocket):
+    await v2p_ws_manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        v2p_ws_manager.disconnect(websocket)
 
 
 

@@ -380,6 +380,17 @@ async def db_list_high_pollution_zones() -> Optional[List[Dict[str, Any]]]:
     except Exception:
         return None
 
+async def db_list_all_pollution_zones() -> Optional[List[Dict[str, Any]]]:
+    if _engine is None or 'pollution_zones_table' not in globals() or pollution_zones_table is None:
+        return None
+    from sqlalchemy import select
+    try:
+        async with _engine.connect() as conn:
+            rows = await conn.execute(select(pollution_zones_table))
+            return [{k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in dict(r._mapping).items()} for r in rows]
+    except Exception:
+        return None
+
 
 # ── V2P Alerts ────────────────────────────────────────────────────────────────
 
